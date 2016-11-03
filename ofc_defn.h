@@ -25,7 +25,7 @@
 #define OFC_MAX_DATA_SOCK      10
 #define OFC_MTU_SIZE           1500
 #define OFC_L2_HDR_LEN         18
-#define OFC_MAX_PKT_SIZE       (OFC_MTU_SIZE + OFC_L2_HDR_LEN)
+#define OFC_MAX_PKT_SIZE       (OFC_MTU_SIZE + OFC_L2_HDR_LEN) /* Check if CRC is required */
 #define OFC_DEF_CNTRL_PORT_NUM 6633
 
 /* NOTE: If events are added or removed, update OFC_MAX_EVENTS */
@@ -37,6 +37,8 @@
 
 #define OFC_MAX_FLOW_TABLES   2
 #define OFC_MAX_FLOW_ENTRIES  20
+#define OFC_MIN_FLOW_PRIORITY 1
+#define OFC_FIRST_TABLE_INDEX 0
 
 #define OFC_MAC_ADDR_LEN    6
 

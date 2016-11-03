@@ -39,7 +39,7 @@ int OfcDpMainInit (void)
 
     /* Initialize lists and queues */
     INIT_LIST_HEAD (&gOfcDpGlobals.pktRxIfListHead);
-	INIT_LIST_HEAD (&gOfcDpGlobals.cpMsgListHead);
+    INIT_LIST_HEAD (&gOfcDpGlobals.cpMsgListHead);
 
     if (OfcDpCreateFlowTables() != OFC_SUCCESS)
     {
@@ -120,13 +120,6 @@ int OfcDpMainTask (void *args)
 int OfcDpRxDataPacket (void)
 {
     tDataPktRxIfQ *pMsgQ = NULL;
-#if 0
-    struct msghdr msg;
-    struct iovec  iov;
-    mm_segment_t  old_fs;
-    char          dataPkt[OFC_MTU_SIZE];
-    int           msgLen = 0;
-#endif
     __u8          *pDataPkt = NULL;
     __u32         pktLen = 0;
     __u8          dataIfNum = 0;
@@ -136,32 +129,21 @@ int OfcDpRxDataPacket (void)
     while ((pMsgQ = OfcDpRecvFromDataPktQ()) != NULL)
     {
         dataIfNum = pMsgQ->dataIfNum;
-        printk (KERN_INFO "pMsgQ->dataIfNum:%d\r\n", pMsgQ->dataIfNum);
-#if 0
-        /* Receive data packet from raw socket */
-        memset (&msg, 0, sizeof(msg));
-        memset (&iov, 0, sizeof(iov));
-        memset (dataPkt, 0, sizeof(dataPkt));
-        iov.iov_base = dataPkt;
-        iov.iov_len = sizeof(dataPkt);
-        msg.msg_iov = &iov;
-        msg.msg_iovlen = 1;
-        old_fs = get_fs();
-        set_fs(KERNEL_DS);
-        msgLen = sock_recvmsg (gOfcDpGlobals.aDataSocket[dataIfNum], 
-                               &msg, sizeof(dataPkt), 0);
-        set_fs(old_fs);
-#endif
         if (OfcDpRcvDataPktFromSock (dataIfNum, &pDataPkt, &pktLen)
             != OFC_SUCCESS)
         {
             continue;
         }
-        OfcDumpPacket (pDataPkt, pktLen);
 
+        /* Process packet using OpenFlow Pipeline */
+        OfcDpProcessPktOpenFlowPipeline (pDataPkt, pktLen, dataIfNum);
+
+#if 0
+        OfcDumpPacket (pDataPkt, pktLen);
         /* Send packet to control path task */
-        OfcDpSendToCpQ (dataPkt, msgLen);
+        OfcDpSendToCpQ (pDataPkt, pktLen);
         OfcCpSendEvent (OFC_DP_TO_CP_EVENT);
+#endif
 
         /* Release message */
         kfree (pMsgQ);
@@ -188,14 +170,17 @@ int OfcDpRxDataPacket (void)
 *******************************************************************/
 int OfcDpCreateFlowTables (void)
 {
-    tOfcFlowTable *pFlowTable = NULL;
+    tOfcFlowTable  *pFlowTable = NULL;
+    tOfcFlowEntry  *pTableMissFlow = NULL;
+    tOfcInstrList  *pInstr = NULL;
+    tOfcActionList *pActions = NULL;
     int           flowTableNum = 0;
 
     INIT_LIST_HEAD (&gOfcDpGlobals.flowTableListHead);
-    for (flowTableNum = 0; flowTableNum < OFC_MAX_FLOW_TABLES;
-         flowTableNum++)
+    for (flowTableNum = OFC_FIRST_TABLE_INDEX; 
+         flowTableNum < OFC_MAX_FLOW_TABLES; flowTableNum++)
     {
-        pFlowTable = (tOfcFlowTable *) kmalloc (sizeof(tOfcFlowTable *),
+        pFlowTable = (tOfcFlowTable *) kmalloc (sizeof(tOfcFlowTable),
                                                 GFP_KERNEL);
         if (pFlowTable == NULL)
         {
@@ -206,7 +191,7 @@ int OfcDpCreateFlowTables (void)
 
         /* Initialize flow tables */
         memset (pFlowTable, 0, sizeof(tOfcFlowTable));
-        INIT_LIST_HEAD (&pFlowTable->flowEntryListHead);
+        INIT_LIST_HEAD (&pFlowTable->flowEntryList);
         pFlowTable->tableId = flowTableNum;
         pFlowTable->maxEntries = OFC_MAX_FLOW_ENTRIES;
 
@@ -214,8 +199,182 @@ int OfcDpCreateFlowTables (void)
         INIT_LIST_HEAD (&pFlowTable->list);
         list_add_tail (&pFlowTable->list, 
                        &gOfcDpGlobals.flowTableListHead);
+
+        /* Add table-miss flow */
+        pTableMissFlow = 
+            (tOfcFlowEntry *) kmalloc (sizeof(tOfcFlowEntry), GFP_KERNEL);
+        if (pTableMissFlow == NULL)
+        {
+            printk (KERN_CRIT "Failed to allocate memory to "
+                              "table-miss flow!!\r\n");
+            return OFC_FAILURE;
+        }
+        memset (pTableMissFlow, 0, sizeof(tOfcFlowEntry));
+        INIT_LIST_HEAD (&pTableMissFlow->list);
+        pTableMissFlow->priority = OFC_MIN_FLOW_PRIORITY;
+        pTableMissFlow->tableId = pFlowTable->tableId;
+        INIT_LIST_HEAD (&pTableMissFlow->matchList);
+        INIT_LIST_HEAD (&pTableMissFlow->instrList);
+
+        /* No match list, therefore all packets would match */
+        /* Instruction list: Apply Action */
+        pInstr = (tOfcInstrList *) kmalloc (sizeof(tOfcInstrList),
+                                            GFP_KERNEL);
+        if (pInstr == NULL)
+        {
+            printk (KERN_CRIT "Failed to allocate memory to "
+                              "instruction list!!\r\n");
+            return OFC_FAILURE;
+        }
+        memset (pInstr, 0, sizeof(tOfcInstrList));
+        INIT_LIST_HEAD (&pInstr->list);
+        INIT_LIST_HEAD (&pInstr->u.actionList);
+        pInstr->instrType = OFCIT_APPLY_ACTIONS;
+        list_add_tail (&pInstr->list, &pTableMissFlow->instrList);
+        
+        /* Action: output port:controller */
+        pActions = 
+            (tOfcActionList *) kmalloc (sizeof(tOfcActionList), 
+                                        GFP_KERNEL);
+        if (pActions == NULL)
+        {
+            printk (KERN_CRIT "Failed to allocate memory to "
+                              "action list!!\r\n");
+            return OFC_FAILURE;
+        }
+        memset (pActions, 0, sizeof(tOfcActionList));
+        INIT_LIST_HEAD (&pActions->list);
+        pActions->actionType = OFCAT_OUTPUT;
+        pActions->u.outPort = OFPP_CONTROLLER;
+        list_add_tail (&pActions->list, &pInstr->u.actionList);
+
+        list_add_tail (&pTableMissFlow->list,
+                       &pFlowTable->flowEntryList);
     }
 
     return OFC_SUCCESS;
 }
 
+/******************************************************************                                                                          
+* Function: OfcDpProcessPktOpenFlowPipeline
+*
+* Description: This function processes packet via OpenFlow
+*              processing pipeline
+*
+* Input: pPkt - Pointer to data packet
+*        pktLen - Packet length
+*        inPort - Input port
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen, 
+                                     __u8 inPort)
+{
+    tOfcFlowTable   *pFlowTable = NULL;
+    tOfcFlowEntry   *pMatchFlow = NULL;
+    tOfcInstrList   *pInstr = NULL;
+    tOfcActionList  *pActions = NULL;
+    __u8            outPortList[gNumOpenFlowIf];
+    __u8            tableId = 0;
+
+    /* Start processing with flows in table 0 */
+    tableId = OFC_FIRST_TABLE_INDEX;
+    while (tableId < OFC_MAX_FLOW_TABLES)
+    {
+        pFlowTable = OfcDpGetFlowTableEntry (tableId);
+        if (pFlowTable == NULL)
+        {
+            printk (KERN_CRIT "Failed to fetch first flow table\r\n");
+            return OFC_FAILURE;
+        }
+
+        /* Update flow table lookup count for statistics */
+        pFlowTable->lookupCount++;
+
+        /* Get best match flow */
+
+        if (pMatchFlow == NULL)
+        {
+            printk (KERN_CRIT "Failed to fetch best match " 
+                              "flow entry\r\n");
+            return OFC_FAILURE;
+        }
+
+        /* Update flow statistics */
+        pFlowTable->matchCount++;
+        pMatchFlow->pktMatchCount++;
+        pMatchFlow->byteMatchCount += pktLen;
+
+        /* This will be updated during instruction execution */
+        /* If instruction is not GOTO_TABLE then loop will terminate */
+        tableId = OFC_MAX_FLOW_TABLES;
+
+        /* Execute flow instruction */
+        if (OfcExecFlowInstr (pPkt, pktLen, inPort, 
+                              &pMatchFlow->instrList, 
+                              &tableId, outPortList) 
+            != OFC_SUCCESS)
+        {
+            printk (KERN_CRIT "Failed to execute flow instruction\r\n ");
+            return OFC_FAILURE;
+        }
+    }
+
+    return OFC_SUCCESS;
+}
+/******************************************************************                                                                          
+* Function: OfcExecFlowInstr
+*
+* Description: This function processes instruction of matching
+*              flow entry
+*
+* Input: pPkt - Pointer to data packet
+*        pktLen - Packet length
+*        inPort - Input port
+*        pInstr - Pointer to instruction list
+*
+* Output: pTableId - Pointer to new table Id
+          pOutPortList - Pointer to output port list
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcExecFlowInstr (__u8 *pPkt, __u32 pktLen, __u8 inPort,
+                      struct list_head *pInstrList, __u8 *pTableId, 
+                      __u8 *pOutPortList)
+{
+    tOfcInstrList    *pInstr = NULL;
+    tOfcActionList   *pActions = NULL;
+    struct list_head *pList = NULL;
+
+    list_for_each (pList, pInstrList)
+    {
+        pInstr = (tOfcInstrList *) pList;
+        switch (pInstr->instrType)
+        {
+            case OFCIT_APPLY_ACTIONS:
+                pActions = &pInstr->u.actionList;
+                OfcApplyInstrActions (pPkt, pktLen, inPort,
+                                      pOutPortList);
+                break;
+
+            case OFCIT_CLEAR_ACTIONS:
+                break;
+
+            case OFCIT_WRITE_ACTIONS:
+                break;
+
+            case OFCIT_GOTO_TABLE:
+                *pTableId = pInstr->u.tableId;
+                break;
+
+            default:
+                return OFC_FAILURE;
+        }
+    }
+
+    return OFC_SUCCESS;
+}

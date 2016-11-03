@@ -606,3 +606,34 @@ __u32 OfcDpRcvDataPktFromSock (__u8 dataIfNum, __u8 **ppPkt,
 
     return OFC_SUCCESS;
 }
+/******************************************************************                                                                          
+* Function: OfcDpGetFlowTableEntry
+*
+* Description: This function fetches flow table structure from
+*              the list of flow tables
+*
+* Input: tableId - Flow table ID
+*
+* Output: None
+*
+* Returns: Pointer to flow table or NULL
+*
+*******************************************************************/
+tOfcFlowTable *OfcDpGetFlowTableEntry (__u8 tableId)
+{
+    tOfcFlowTable     *pFlowTable = NULL;
+    struct list_head  *pListHead = NULL;
+    struct list_head  *pList = NULL;
+
+    pListHead = &gOfcDpGlobals.flowTableListHead;
+    list_for_each (pList, pListHead)
+    {
+        pFlowTable = (tOfcFlowTable *) pList;
+        if (pFlowTable->tableId == tableId)
+        {
+            return pFlowTable;
+        }
+    }
+
+    return NULL;
+}
