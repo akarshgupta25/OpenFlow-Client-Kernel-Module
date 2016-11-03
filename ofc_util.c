@@ -76,6 +76,58 @@ int OfcDpSendEvent (int events)
 }
 
 /******************************************************************                                                                          
+* Function: OfcCpReceiveEvent
+*
+* Description: This function waits and receives events from
+*              from kernel and data path task
+*
+* Input: events - BitList of possible events
+*
+* Output: pRxEvents - Event that has occurred
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpReceiveEvent (int events, int *pRxEvents)
+{
+    printk (KERN_INFO "Control path Waiting for event...\r\n");
+    wait_event_interruptible (gOfcCpWaitQueue, gOfcCpGlobals.events);
+    printk (KERN_INFO "Control path Event Rx: %u\r\n", gOfcCpGlobals.events);
+    if (gOfcCpGlobals.events & events)
+    {
+        down_interruptible (&gOfcCpGlobals.semId);
+        *pRxEvents = gOfcCpGlobals.events & events;
+        gOfcCpGlobals.events &= ~(*pRxEvents);
+        up (&gOfcCpGlobals.semId);
+        return OFC_SUCCESS;
+    }
+
+    return OFC_FAILURE;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpSendEvent
+*
+* Description: This function posts events to control path task
+*
+* Input: events - Event that has occurred
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpSendEvent (int events)
+{
+    printk (KERN_INFO "Control path sending event:%u\r\n", events);
+    down_interruptible (&gOfcCpGlobals.semId);
+    gOfcCpGlobals.events |= events;
+    up (&gOfcCpGlobals.semId);
+    wake_up_interruptible (&gOfcCpWaitQueue);
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
 * Function: OfcDpRecvFromDataPktQ
 *
 * Description: This function extracts messages from data packet
@@ -134,6 +186,140 @@ int OfcDpSendToDataPktQ (int dataIfNum)
     list_add_tail (&pMsgQ->list, &gOfcDpGlobals.pktRxIfListHead);
 
     return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcDpRecvFromCpMsgQ
+*
+* Description: This function extracts messages from control path
+*              message queue in data path task
+*
+* Input: None
+*
+* Output: None
+*
+* Returns: Pointer to extracted message
+*
+*******************************************************************/
+tDpCpMsgQ *OfcDpRecvFromCpMsgQ (void)
+{
+    struct list_head *pMsgQ = NULL;
+    struct list_head *pListHead = NULL;
+
+    pListHead = &gOfcDpGlobals.cpMsgListHead;
+    list_for_each (pMsgQ, pListHead)
+    {
+        /* Queue is not empty, remove first element */
+        list_del_init (pMsgQ);
+        return (tDpCpMsgQ *) pMsgQ;
+    }
+
+    return NULL;
+}
+
+/******************************************************************                                                                          
+* Function: OfcDpSendToCpQ
+*
+* Description: This function sends messages from data path task
+*              to control path task queue
+*
+* Input: pPkt - Data packet
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDpSendToCpQ (__u8 *pPkt, __u32 pktLen)
+{
+    tDpCpMsgQ *pMsgQ = NULL;
+
+    pMsgQ = (tDpCpMsgQ *) kmalloc (sizeof(tDpCpMsgQ),
+                                   GFP_KERNEL);
+    if (pMsgQ == NULL)
+    {
+        printk (KERN_CRIT "Queue message allocation failed!!\r\n");
+        return OFC_FAILURE;
+    }
+
+    down_interruptible (&gOfcCpGlobals.dpMsgQSemId);
+
+    memset (pMsgQ, 0, sizeof(tDpCpMsgQ));
+    INIT_LIST_HEAD (&pMsgQ->list);
+    pMsgQ->pPkt = pPkt;
+    pMsgQ->pktLen = pktLen;
+    list_add_tail (&pMsgQ->list, &gOfcCpGlobals.dpMsgListHead);
+
+    up (&gOfcCpGlobals.dpMsgQSemId);
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpSendToDpQ
+*
+* Description: This function sends messages from control path task
+*              to data path task queue
+*
+* Input: pPkt - Data packet
+*             - Flow entry
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpSendToDpQ (__u8 *pPkt, __u32 pktLen)
+{
+    tDpCpMsgQ *pMsgQ = NULL;
+
+    pMsgQ = (tDpCpMsgQ *) kmalloc (sizeof(tDpCpMsgQ),
+                                   GFP_KERNEL);
+    if (pMsgQ == NULL)
+    {
+        printk (KERN_CRIT "Queue message allocation failed!!\r\n");
+        return OFC_FAILURE;
+    }
+
+    down_interruptible (&gOfcDpGlobals.cpMsgQSemId);
+
+    memset (pMsgQ, 0, sizeof(tDpCpMsgQ));
+    INIT_LIST_HEAD (&pMsgQ->list);
+    pMsgQ->pPkt = pPkt;
+    list_add_tail (&pMsgQ->list, &gOfcDpGlobals.cpMsgListHead);
+
+    up (&gOfcDpGlobals.cpMsgQSemId);
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpRecvFromDpMsgQ
+*
+* Description: This function extracts messages from data path
+*              message queue in control path task
+*
+* Input: None
+*
+* Output: None
+*
+* Returns: Pointer to extracted message
+*
+*******************************************************************/
+tDpCpMsgQ *OfcCpRecvFromDpMsgQ (void)
+{
+    struct list_head *pMsgQ = NULL;
+    struct list_head *pListHead = NULL;
+
+    pListHead = &gOfcCpGlobals.dpMsgListHead;
+    list_for_each (pMsgQ, pListHead)
+    {
+        /* Queue is not empty, remove first element */
+        list_del_init (pMsgQ);
+        return (tDpCpMsgQ *) pMsgQ;
+    }
+
+    return NULL;
 }
 
 /******************************************************************                                                                          
@@ -262,58 +448,6 @@ int OfcDpCreateSocketsForDataPkts (void)
 }
 
 /******************************************************************                                                                          
-* Function: OfcCpReceiveEvent
-*
-* Description: This function waits and receives events from
-*              from kernel and data path task
-*
-* Input: events - BitList of possible events
-*
-* Output: pRxEvents - Event that has occurred
-*
-* Returns: OFC_SUCCESS/OFC_FAILURE
-*
-*******************************************************************/
-int OfcCpReceiveEvent (int events, int *pRxEvents)
-{
-    printk (KERN_INFO "Control path Waiting for event...\r\n");
-    wait_event_interruptible (gOfcCpWaitQueue, gOfcCpGlobals.events);
-    printk (KERN_INFO "Control path Event Rx: %u\r\n", gOfcCpGlobals.events);
-    if (gOfcCpGlobals.events & events)
-    {
-        down_interruptible (&gOfcCpGlobals.semId);
-        *pRxEvents = gOfcCpGlobals.events & events;
-        gOfcCpGlobals.events &= ~(*pRxEvents);
-        up (&gOfcCpGlobals.semId);
-        return OFC_SUCCESS;
-    }
-
-    return OFC_FAILURE;
-}
-
-/******************************************************************                                                                          
-* Function: OfcCpSendEvent
-*
-* Description: This function posts events to control path task
-*
-* Input: events - Event that has occurred
-*
-* Output: None
-*
-* Returns: OFC_SUCCESS/OFC_FAILURE
-*
-*******************************************************************/
-int OfcCpSendEvent (int events)
-{
-    printk (KERN_INFO "Control path sending event:%u\r\n", events);
-    down_interruptible (&gOfcCpGlobals.semId);
-    gOfcCpGlobals.events |= events;
-    up (&gOfcCpGlobals.semId);
-    wake_up_interruptible (&gOfcCpWaitQueue);
-    return OFC_SUCCESS;
-}
-
-/******************************************************************                                                                          
 * Function: OfcConvertStringToIp
 *
 * Description: This function converts IP address in string format
@@ -415,4 +549,91 @@ int OfcCpCreateCntrlSocket (void)
 
     gOfcCpGlobals.pCntrlSocket = socket;
     return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcDpRcvDataPktFromSock
+*
+* Description: This function receives data packets from OpenFlow
+*              interfaces raw socket in data path task
+*
+* Input: dataIfNum - OpenFlow interface number
+*
+* Output: ppPkt - Pointer to data packet
+*         pPktLen - Length of data packet
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+__u32 OfcDpRcvDataPktFromSock (__u8 dataIfNum, __u8 **ppPkt, 
+                               __u32 *pPktLen)
+{
+    struct msghdr msg;
+    struct iovec  iov;
+    mm_segment_t  old_fs;
+    __u32         msgLen = 0;
+    __u8          *pDataPkt = NULL;
+
+    pDataPkt = (__u8 *) kmalloc (OFC_MAX_PKT_SIZE, GFP_KERNEL);
+    if (pDataPkt == NULL)
+    {
+        printk (KERN_CRIT "Failed to allocate memory to data " 
+                          "packet!!\r\n");
+        return OFC_FAILURE;
+    }
+
+    memset (&msg, 0, sizeof(msg));
+    memset (&iov, 0, sizeof(iov));
+    memset (pDataPkt, 0, OFC_MAX_PKT_SIZE);
+    iov.iov_base = pDataPkt;
+    iov.iov_len = OFC_MAX_PKT_SIZE;
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    old_fs = get_fs();
+    set_fs(KERNEL_DS);
+    msgLen = sock_recvmsg (gOfcDpGlobals.aDataSocket[dataIfNum], 
+                           &msg, OFC_MAX_PKT_SIZE, 0);
+    set_fs(old_fs);
+    if (msgLen == 0)
+    {
+        printk (KERN_CRIT "Failed to receive message from data " 
+                          "socket!!\r\n");
+        return OFC_FAILURE;
+    }
+
+    *ppPkt = pDataPkt;
+    *pPktLen = msgLen;
+
+    return OFC_SUCCESS;
+}
+/******************************************************************                                                                          
+* Function: OfcDpGetFlowTableEntry
+*
+* Description: This function fetches flow table structure from
+*              the list of flow tables
+*
+* Input: tableId - Flow table ID
+*
+* Output: None
+*
+* Returns: Pointer to flow table or NULL
+*
+*******************************************************************/
+tOfcFlowTable *OfcDpGetFlowTableEntry (__u8 tableId)
+{
+    tOfcFlowTable     *pFlowTable = NULL;
+    struct list_head  *pListHead = NULL;
+    struct list_head  *pList = NULL;
+
+    pListHead = &gOfcDpGlobals.flowTableListHead;
+    list_for_each (pList, pListHead)
+    {
+        pFlowTable = (tOfcFlowTable *) pList;
+        if (pFlowTable->tableId == tableId)
+        {
+            return pFlowTable;
+        }
+    }
+
+    return NULL;
 }

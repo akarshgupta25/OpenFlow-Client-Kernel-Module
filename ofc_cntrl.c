@@ -33,13 +33,19 @@ int OfcCpMainInit (void)
 
     /* Initialize semaphore */
     sema_init (&gOfcCpGlobals.semId, 1);
+    sema_init (&gOfcCpGlobals.dpMsgQSemId, 1);
+
+    /* Initialize queues */
+    INIT_LIST_HEAD (&gOfcCpGlobals.dpMsgListHead);
 
     /* Create TCP socket to interact with controller */ 
+#if 0
     if (OfcCpCreateCntrlSocket() != OFC_SUCCESS)
     {
         printk (KERN_CRIT "Data socket creation failed!!\r\n");
         return OFC_FAILURE;
     }
+#endif
 
     gOfcCpGlobals.isModInit = OFC_TRUE;
 
@@ -86,6 +92,8 @@ int OfcCpMainTask (void *args)
             if (event & OFC_DP_TO_CP_EVENT)
             {
                 /* Process information sent by data path task */
+                printk (KERN_INFO "Packet Received from data path task\r\n");
+                OfcCpRxDpMsg();
             }
         }
     }
@@ -129,4 +137,38 @@ int OfcCpRxControlPacket (void)
     OfcDumpPacket (cntrlPkt, msgLen);
 
     return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpRxDpMsg
+*
+* Description: This function dequeues messages sent by data path
+*              task and forwards them to the controller.
+*
+* Input: None
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+void OfcCpRxDpMsg (void)
+{
+    tDpCpMsgQ *pMsgQ = NULL;
+
+    down_interruptible (&gOfcCpGlobals.dpMsgQSemId);
+
+    while ((pMsgQ = OfcCpRecvFromDpMsgQ()) != NULL)
+    {
+        printk (KERN_INFO "Dequeued message from data path queue\r\n");
+        OfcDumpPacket (pMsgQ->pPkt, pMsgQ->pktLen);
+
+        /* Release message */
+        kfree (pMsgQ);
+        pMsgQ = NULL;
+    }
+
+    up (&gOfcCpGlobals.dpMsgQSemId);
+
+    return;
 }
