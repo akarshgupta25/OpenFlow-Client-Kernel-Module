@@ -108,4 +108,9 @@ enum
     OFCR_ACTION    /* Action explicitly output to controller. */
 };
 
+enum 
+{
+    OFPT_HELLO = 0,
+};
+
 #endif /* __OFC_STD_H__ */

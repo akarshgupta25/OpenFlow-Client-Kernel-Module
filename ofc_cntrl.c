@@ -14,6 +14,24 @@
 
 tOfcCpGlobals gOfcCpGlobals;
 
+int OfcCpInitiateHelloPacket (void)
+{
+    tOfcCpHeader *responseHeader;
+    responseHeader = kmalloc (sizeof(tOfcCpHeader), GFP_KERNEL);
+    if (!responseHeader)
+    {
+        printk (KERN_CRIT "Failed to allocate memory to Hello Response"
+                "packet\n");
+        return OFC_FAILURE;
+    }
+    responseHeader->ofcVersion = OFC_VERSION;
+    responseHeader->ofcType = OFPT_HELLO;
+    responseHeader->ofcMsgLength = sizeof(tOfcCpHeader);
+    responseHeader->ofcTransId = OFC_INIT_TRANSACTION_ID;
+
+    return OFC_SUCCESS;
+}
+
 /******************************************************************                                                                          
 * Function: OfcCpMainInit
 *
@@ -39,17 +57,15 @@ int OfcCpMainInit (void)
     INIT_LIST_HEAD (&gOfcCpGlobals.dpMsgListHead);
 
     /* Create TCP socket to interact with controller */ 
-#if 0
     if (OfcCpCreateCntrlSocket() != OFC_SUCCESS)
     {
         printk (KERN_CRIT "Data socket creation failed!!\r\n");
         return OFC_FAILURE;
     }
-#endif
 
     gOfcCpGlobals.isModInit = OFC_TRUE;
 
-    return OFC_SUCCESS;
+    return OfcCpInitiateHelloPacket();
 }
 
 /******************************************************************                                                                          
@@ -101,6 +117,25 @@ int OfcCpMainTask (void *args)
     return OFC_SUCCESS;
 }
 
+int OfcCpReplyHelloPacket (char *cntrlPkt)
+{
+    tOfcCpHeader *responseHeader, *recvdHeader;
+    responseHeader = kmalloc (sizeof(tOfcCpHeader), GFP_KERNEL);
+    if (!responseHeader)
+    {
+        printk (KERN_CRIT "Failed to allocate memory to Hello Response"
+                "packet\n");
+        return OFC_FAILURE;
+    }
+
+    recvdHeader = (tOfcCpHeader *)cntrlPkt;
+    memcpy(responseHeader, recvdHeader, sizeof(tOfcCpHeader));
+    responseHeader->ofcVersion = OFC_VERSION;
+
+    //TODO - Update transaction id.
+    return OFC_SUCCESS;
+}
+
 /******************************************************************                                                                          
 * Function: OfcCpRxControlPacket
 *
@@ -134,6 +169,14 @@ int OfcCpRxControlPacket (void)
     msgLen = sock_recvmsg (gOfcCpGlobals.pCntrlSocket, &msg, 
                            sizeof(cntrlPkt), 0);
     set_fs(old_fs);
+
+    switch (((tOfcCpHeader *)cntrlPkt)->ofcType)
+    {
+        case OFPT_HELLO:
+            OfcCpReplyHelloPacket(cntrlPkt);
+            break;
+    }
+
     OfcDumpPacket (cntrlPkt, msgLen);
 
     return OFC_SUCCESS;

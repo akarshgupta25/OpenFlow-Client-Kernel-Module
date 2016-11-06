@@ -152,6 +152,14 @@ typedef struct
     __u32            outPort;
 } tOfcOutPortList;
 
+typedef struct
+{
+    __u8  ofcVersion;
+    __u8  ofcType;
+    __u16 ofcMsgLength;
+    __u16 ofcTransId;
+} tOfcCpHeader;
+
 /* Function Declarations */
 int OfcDpReceiveEvent (int events, int *pRxEvents);
 int OfcDpSendEvent (int events);

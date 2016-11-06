@@ -49,4 +49,7 @@
 #define OFC_TCP_PROT_TYPE  0x06
 #define OFC_UDP_PROT_TYPE  0x11
 
+#define OFC_VERSION 0x01
+#define OFC_INIT_TRANSACTION_ID 0x01
+
 #endif /* __OFC_DEFN_H__ */
