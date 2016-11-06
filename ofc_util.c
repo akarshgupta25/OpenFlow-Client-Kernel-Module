@@ -523,7 +523,7 @@ int OfcCpCreateCntrlSocket (void)
     struct sockaddr_in   serverAddr;
     struct socket        *socket = NULL;
 
-    if ((sock_create (AF_INET, SOCK_STREAM, 0, &socket)) < 0)
+    if ((sock_create (AF_INET, SOCK_STREAM, IPPROTO_TCP, &socket)) < 0)
     {
         printk (KERN_CRIT "Failed to open TCP socket!!\r\n");
         return OFC_FAILURE;

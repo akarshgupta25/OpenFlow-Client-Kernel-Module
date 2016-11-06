@@ -157,7 +157,7 @@ typedef struct
     __u8  ofcVersion;
     __u8  ofcType;
     __u16 ofcMsgLength;
-    __u16 ofcTransId;
+    __u32 ofcTransId;
 } tOfcCpHeader;
 
 /* Function Declarations */

@@ -14,9 +14,60 @@
 
 tOfcCpGlobals gOfcCpGlobals;
 
+/******************************************************************                                                                          
+* Function: ofcSendHelloPacket
+*
+* Description: This function is used to send out the HELLO message
+*              that is created.
+*
+* Input: responseHeader - Pointer to the message created.
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int ofcSendHelloPacket (tOfcCpHeader *responseHeader)
+{
+    struct msghdr msg;
+    struct iovec  iov;
+    mm_segment_t  old_fs;
+
+    memset (&msg, 0, sizeof(msg));
+    memset (&iov, 0, sizeof(iov));
+    iov.iov_base = responseHeader;
+    iov.iov_len = sizeof(tOfcCpHeader);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+
+    old_fs = get_fs();
+    set_fs(KERNEL_DS);
+    sock_sendmsg (gOfcCpGlobals.pCntrlSocket, &msg, 
+                           sizeof(tOfcCpHeader));
+    set_fs(old_fs);
+
+    kfree(responseHeader);
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpInitiateHelloPacket
+*
+* Description: This function is invoked to create the HELLO packet
+*              once the TCP connection is setup. Once created,
+*              it would invoke the send function to send it out.
+*
+* Input: None
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
 int OfcCpInitiateHelloPacket (void)
 {
     tOfcCpHeader *responseHeader;
+
     responseHeader = kmalloc (sizeof(tOfcCpHeader), GFP_KERNEL);
     if (!responseHeader)
     {
@@ -26,10 +77,41 @@ int OfcCpInitiateHelloPacket (void)
     }
     responseHeader->ofcVersion = OFC_VERSION;
     responseHeader->ofcType = OFPT_HELLO;
-    responseHeader->ofcMsgLength = sizeof(tOfcCpHeader);
-    responseHeader->ofcTransId = OFC_INIT_TRANSACTION_ID;
+    responseHeader->ofcMsgLength = htons(sizeof(tOfcCpHeader));
+    responseHeader->ofcTransId = htonl(OFC_INIT_TRANSACTION_ID);
+   
+    return ofcSendHelloPacket(responseHeader);
+}
 
-    return OFC_SUCCESS;
+/******************************************************************                                                                          
+* Function: OfcCpReplyHelloPacket
+*
+* Description: This function is invoked to reply to the HELLO message
+*              from the controller.
+*
+* Input: cntrlPkt - The packet received from the controller.
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpReplyHelloPacket (char *cntrlPkt)
+{
+    tOfcCpHeader *responseHeader, *recvdHeader;
+    responseHeader = kmalloc (sizeof(tOfcCpHeader), GFP_KERNEL);
+    if (!responseHeader)
+    {
+        printk (KERN_CRIT "Failed to allocate memory to Hello Response"
+                "packet\n");
+        return OFC_FAILURE;
+    }
+
+    recvdHeader = (tOfcCpHeader *)cntrlPkt;
+    memcpy(responseHeader, recvdHeader, sizeof(tOfcCpHeader));
+    responseHeader->ofcVersion = OFC_VERSION;
+
+    return ofcSendHelloPacket(responseHeader);
 }
 
 /******************************************************************                                                                          
@@ -113,26 +195,6 @@ int OfcCpMainTask (void *args)
             }
         }
     }
-
-    return OFC_SUCCESS;
-}
-
-int OfcCpReplyHelloPacket (char *cntrlPkt)
-{
-    tOfcCpHeader *responseHeader, *recvdHeader;
-    responseHeader = kmalloc (sizeof(tOfcCpHeader), GFP_KERNEL);
-    if (!responseHeader)
-    {
-        printk (KERN_CRIT "Failed to allocate memory to Hello Response"
-                "packet\n");
-        return OFC_FAILURE;
-    }
-
-    recvdHeader = (tOfcCpHeader *)cntrlPkt;
-    memcpy(responseHeader, recvdHeader, sizeof(tOfcCpHeader));
-    responseHeader->ofcVersion = OFC_VERSION;
-
-    //TODO - Update transaction id.
     return OFC_SUCCESS;
 }
 
@@ -175,6 +237,8 @@ int OfcCpRxControlPacket (void)
         case OFPT_HELLO:
             OfcCpReplyHelloPacket(cntrlPkt);
             break;
+        default:
+            return OFC_FAILURE;
     }
 
     OfcDumpPacket (cntrlPkt, msgLen);
