@@ -19,7 +19,8 @@ enum
     OFPP_ALL        = 0xfffffffc,
     OFPP_CONTROLLER = 0xfffffffd,
     OFPP_LOCAL      = 0xfffffffe,
-    OFPP_ANY        = 0xffffffff
+    OFPP_ANY        = 0xffffffff,
+    OFPP_NUM        = 8
 };
 
 enum 
@@ -99,6 +100,12 @@ enum
     OFCAT_PUSH_PBB      = 26,     /* Push a new PBB service tag (I-TAG) */
     OFCAT_POP_PBB       = 27,     /* Pop the outer PBB service tag (I-TAG) */
     OFCAT_EXPERIMENTER  = 0xFFFF
+};
+
+enum 
+{
+    OFCR_NO_MATCH, /* No matching flow. */
+    OFCR_ACTION    /* Action explicitly output to controller. */
 };
 
 #endif /* __OFC_STD_H__ */

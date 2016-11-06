@@ -93,7 +93,7 @@ int OfcCpMainTask (void *args)
             {
                 /* Process information sent by data path task */
                 printk (KERN_INFO "Packet Received from data path task\r\n");
-                OfcCpRxDpMsg();
+                OfcCpRxDataPathMsg();
             }
         }
     }
@@ -140,7 +140,7 @@ int OfcCpRxControlPacket (void)
 }
 
 /******************************************************************                                                                          
-* Function: OfcCpRxDpMsg
+* Function: OfcCpRxDataPathMsg
 *
 * Description: This function dequeues messages sent by data path
 *              task and forwards them to the controller.
@@ -152,7 +152,7 @@ int OfcCpRxControlPacket (void)
 * Returns: OFC_SUCCESS/OFC_FAILURE
 *
 *******************************************************************/
-void OfcCpRxDpMsg (void)
+void OfcCpRxDataPathMsg (void)
 {
     tDpCpMsgQ *pMsgQ = NULL;
 

@@ -54,7 +54,7 @@ unsigned int OfcNetFilterPreRouteHook (const struct nf_hook_ops *ops,
             OfcDpSendToDataPktQ (dataIfNum);
             up (&gOfcDpGlobals.dataPktQSemId);
             OfcDpSendEvent (OFC_PKT_RX_EVENT);
-            break;
+            return NF_STOLEN;
         }
     }
 

@@ -230,7 +230,7 @@ tDpCpMsgQ *OfcDpRecvFromCpMsgQ (void)
 * Returns: OFC_SUCCESS/OFC_FAILURE
 *
 *******************************************************************/
-int OfcDpSendToCpQ (__u8 *pPkt, __u32 pktLen)
+int OfcDpSendToCpQ (tDpCpMsgQ *pMsgParam)
 {
     tDpCpMsgQ *pMsgQ = NULL;
 
@@ -245,9 +245,8 @@ int OfcDpSendToCpQ (__u8 *pPkt, __u32 pktLen)
     down_interruptible (&gOfcCpGlobals.dpMsgQSemId);
 
     memset (pMsgQ, 0, sizeof(tDpCpMsgQ));
+    memcpy (pMsgQ, pMsgParam, sizeof(tDpCpMsgQ));
     INIT_LIST_HEAD (&pMsgQ->list);
-    pMsgQ->pPkt = pPkt;
-    pMsgQ->pktLen = pktLen;
     list_add_tail (&pMsgQ->list, &gOfcCpGlobals.dpMsgListHead);
 
     up (&gOfcCpGlobals.dpMsgQSemId);
@@ -606,6 +605,51 @@ __u32 OfcDpRcvDataPktFromSock (__u8 dataIfNum, __u8 **ppPkt,
 
     return OFC_SUCCESS;
 }
+
+/******************************************************************                                                                          
+* Function: OfcDpSendDataPktOnSock
+*
+* Description: This function sends data packets on OpenFlow
+*              interfaces raw socket in data path task
+*
+* Input: dataIfNum - OpenFlow interface number
+*        pPkt - Pointer to data packet
+*        pktLen - Length of data packet
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDpSendDataPktOnSock (__u8 dataIfNum, __u8 *pPkt, 
+                            __u32 pktLen)
+{
+    struct msghdr msg;
+    struct iovec  iov;
+    mm_segment_t  old_fs;
+    __u32         msgLen = 0;
+
+    memset (&msg, 0, sizeof(msg));
+    memset (&iov, 0, sizeof(iov));
+    iov.iov_base = pPkt;
+    iov.iov_len = pktLen;
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    old_fs = get_fs();
+    set_fs(KERNEL_DS);
+    msgLen = sock_sendmsg (gOfcDpGlobals.aDataSocket[dataIfNum],
+                           &msg, pktLen);
+    set_fs(old_fs);
+    if (msgLen == 0)
+    {
+        printk (KERN_CRIT "Failed to send message from data "
+                          "socket!!\r\n");
+        return OFC_FAILURE;
+    }
+
+    return OFC_SUCCESS;
+}
+
 /******************************************************************                                                                          
 * Function: OfcDpGetFlowTableEntry
 *
@@ -636,4 +680,103 @@ tOfcFlowTable *OfcDpGetFlowTableEntry (__u8 tableId)
     }
 
     return NULL;
+}
+
+/******************************************************************                                                                          
+* Function: OfcDpExtractPktHdrs
+*
+* Description: This function extracts packet headers for matching
+*              flow table entries
+*
+* Input: pPkt - Pointer to packet
+*        pktLen - Length of packet
+*        inPort - Ingress port
+*
+* Output: pktMatchFields - Extracted packet headers
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDpExtractPktHdrs (__u8 *pPkt, __u32 pktLen, __u8 inPort, 
+                         tOfcMatchFields *pPktMatchFields)
+{
+    __u32   pktOffset = 0;
+    __u16   vlanTpid = 0;
+    __u16   vlanId = 0;
+    __u8    ipHdrLen = 0;
+
+    pPktMatchFields->inPort = inPort;
+
+    /* Extract destination MAC address */
+    memcpy (pPktMatchFields->aDstMacAddr, pPkt, OFC_MAC_ADDR_LEN);
+    pktOffset += OFC_MAC_ADDR_LEN;
+
+    /* Extract source MAC address */
+    memcpy (pPktMatchFields->aSrcMacAddr, pPkt + pktOffset,
+            OFC_MAC_ADDR_LEN);
+    pktOffset += OFC_MAC_ADDR_LEN;
+
+    /* Extract Vlan Id (if present) */
+    vlanTpid = htons (0x8100);
+    if (!memcmp ((pPkt + pktOffset), &vlanTpid, sizeof(vlanTpid)))
+    {
+        pktOffset += sizeof(vlanTpid);
+        memcpy (&vlanId, pPkt + pktOffset, sizeof(vlanId));
+        pPktMatchFields->vlanId = ntohs (vlanId) & 0xFFF;
+        pktOffset += sizeof(vlanId);
+    }
+
+    /* Extract EthType */
+    memcpy (&pPktMatchFields->etherType, pPkt + pktOffset, 
+            sizeof (pPktMatchFields->etherType));
+    pPktMatchFields->etherType = ntohs (pPktMatchFields->etherType);
+    pktOffset += sizeof (pPktMatchFields->etherType);
+
+    if (pPktMatchFields->etherType != OFC_IP_ETHTYPE)
+    {
+        return OFC_SUCCESS;
+    }
+
+    /* Fetch IP header length */
+    memcpy (&ipHdrLen, pPkt + pktOffset, sizeof (ipHdrLen));
+    ipHdrLen = (ipHdrLen & 0xF) * 4;
+
+    /* Extract protocol type */
+    memcpy (&pPktMatchFields->protocolType, 
+            pPkt + pktOffset + OFC_IP_PROT_TYPE_OFFSET,
+            sizeof (pPktMatchFields->protocolType));
+    pPktMatchFields->protocolType = ntohs (pPktMatchFields->protocolType);
+    
+    /* Extract source IP address */
+    memcpy (&pPktMatchFields->srcIpAddr,
+            pPkt + pktOffset + OFC_IP_SRC_IP_OFFSET,
+            sizeof (pPktMatchFields->srcIpAddr));
+    pPktMatchFields->srcIpAddr = ntohl (pPktMatchFields->srcIpAddr);
+
+    /* Extract destination IP address */
+    memcpy (&pPktMatchFields->dstIpAddr, 
+            pPkt + pktOffset + OFC_IP_DST_IP_OFFSET,
+            sizeof (pPktMatchFields->dstIpAddr));
+    pPktMatchFields->dstIpAddr = ntohl (pPktMatchFields->dstIpAddr);
+    pktLen += ipHdrLen;
+
+    if ((pPktMatchFields->protocolType != OFC_TCP_PROT_TYPE) &&
+        (pPktMatchFields->protocolType != OFC_UDP_PROT_TYPE))
+    {
+        return OFC_SUCCESS;
+    }
+
+    /* Extract L4 source port number */
+    memcpy (&pPktMatchFields->srcPortNum, pPkt + pktOffset,
+            sizeof(pPktMatchFields->srcPortNum));
+    pPktMatchFields->srcPortNum = ntohs (pPktMatchFields->srcPortNum);
+    pktOffset += sizeof(pPktMatchFields->srcPortNum);
+  
+    /* Extract L4 destination port number */
+    memcpy (&pPktMatchFields->dstPortNum, pPkt + pktOffset,
+            sizeof(pPktMatchFields->dstPortNum));
+    pPktMatchFields->dstPortNum = ntohs (pPktMatchFields->dstPortNum);
+    pktOffset += sizeof(pPktMatchFields->dstPortNum);
+
+    return OFC_SUCCESS;
 }

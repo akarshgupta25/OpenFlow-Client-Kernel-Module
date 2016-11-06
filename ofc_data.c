@@ -14,6 +14,7 @@
 #include "ofc_hdrs.h"
 
 tOfcDpGlobals gOfcDpGlobals;
+extern int  gNumOpenFlowIf;
 
 /******************************************************************                                                                          
 * Function: OfcDpMainInit
@@ -275,10 +276,23 @@ int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen,
 {
     tOfcFlowTable   *pFlowTable = NULL;
     tOfcFlowEntry   *pMatchFlow = NULL;
-    tOfcInstrList   *pInstr = NULL;
-    tOfcActionList  *pActions = NULL;
-    __u8            outPortList[gNumOpenFlowIf];
+    tDpCpMsgQ       msgQ;
+    tOfcMatchFields pktMatchFields;
+    __u8            maxOutPorts = OFC_MAX_FLOW_TABLES * 
+                                  (gNumOpenFlowIf + OFPP_NUM);
+    __u32           aOutPortList[maxOutPorts];
+    __u32           outPort = 0;
+    __u8            numOutPorts = 0;
+    __u8            portIndex = 0;
     __u8            tableId = 0;
+    __u8            isTableMiss = OFC_FALSE;
+    __u8            dataIfNum = 0;
+
+    memset (aOutPortList, 0, sizeof(aOutPortList));
+    memset (&pktMatchFields, 0, sizeof(pktMatchFields));
+
+    /* Extract packet headers to match flow */
+    OfcDpExtractPktHdrs (pPkt, pktLen, inPort, &pktMatchFields);
 
     /* Start processing with flows in table 0 */
     tableId = OFC_FIRST_TABLE_INDEX;
@@ -295,7 +309,9 @@ int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen,
         pFlowTable->lookupCount++;
 
         /* Get best match flow */
-
+        pMatchFlow = OfcDpGetBestMatchFlow (pktMatchFields,
+                                            &pFlowTable->flowEntryList,
+                                            &isTableMiss);
         if (pMatchFlow == NULL)
         {
             printk (KERN_CRIT "Failed to fetch best match " 
@@ -313,9 +329,9 @@ int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen,
         tableId = OFC_MAX_FLOW_TABLES;
 
         /* Execute flow instruction */
-        if (OfcExecFlowInstr (pPkt, pktLen, inPort, 
-                              &pMatchFlow->instrList, 
-                              &tableId, outPortList) 
+        if (OfcDpExecuteFlowInstr (pPkt, pktLen, inPort, 
+                                   &pMatchFlow->instrList, 
+                                   &tableId, aOutPortList, &numOutPorts) 
             != OFC_SUCCESS)
         {
             printk (KERN_CRIT "Failed to execute flow instruction\r\n ");
@@ -323,10 +339,229 @@ int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen,
         }
     }
 
+    /* Apply action list (TODO) */
+
+    /* Send packet to output ports */
+    for (portIndex = 0; portIndex < numOutPorts; portIndex++)
+    {
+        outPort = aOutPortList[portIndex];
+        if (outPort == OFPP_CONTROLLER)
+        {
+            /* Send packet-in to controller */
+            /* This is done by sending the packet to control
+             * path task */
+            memset (&msgQ, 0, sizeof(msgQ));
+            msgQ.pPkt = pPkt;
+            msgQ.pktLen = pktLen;
+            msgQ.inPort = inPort;
+            msgQ.msgType = (isTableMiss == OFC_TRUE) ? OFCR_NO_MATCH :
+                                                       OFCR_ACTION;
+            msgQ.tableId = pMatchFlow->tableId;
+            msgQ.pFlowEntry = pMatchFlow;
+            if (isTableMiss == OFC_TRUE)
+            {
+                msgQ.cookie.hi = 0xFFFFFFFF;
+                msgQ.cookie.lo = 0xFFFFFFFF;
+            }
+            else
+            {
+                memcpy (&msgQ.cookie, &pMatchFlow->cookie, 
+                        sizeof(msgQ.cookie));
+            }
+
+            /* TODO: Convert matchlist to match TLV 
+             * (Do be done at control path task) */
+            OfcDpSendToCpQ (&msgQ);
+            OfcCpSendEvent (OFC_DP_TO_CP_EVENT);
+        }
+        else if (outPort == OFPP_ALL)
+        {
+            /* Send packet through all OpenFlow ports */
+            for (dataIfNum = 0; dataIfNum < gNumOpenFlowIf; 
+                 dataIfNum++)
+            {
+                if (dataIfNum == inPort)
+                {
+                    /* Do not send packet through input port */
+                    continue;
+                }
+                OfcDpSendDataPktOnSock (dataIfNum, pPkt, pktLen);
+            }
+        }
+        else if (outPort == OFPP_IN_PORT)
+        {
+            OfcDpSendDataPktOnSock (inPort, pPkt, pktLen);
+        }
+
+        /* TODO: Support OFPP_NORMAL || OFPP_LOCAL?? */
+        /* TODO: Support OFPP_FLOOD */
+
+        else
+        {
+            /* Output port n corresponds to dataIfNum n-1 */
+            OfcDpSendDataPktOnSock (outPort - 1, pPkt, pktLen);
+        }
+    }
+
     return OFC_SUCCESS;
 }
+
 /******************************************************************                                                                          
-* Function: OfcExecFlowInstr
+* Function: OfcDpGetBestMatchFlow
+*
+* Description: This function matches flow table entries and returns
+*              the best matching flow entry or table-miss flow
+*
+* Input: pktMatchFields - Packet header fields
+*        pFlowEntryList - Pointer to flow table entry list head
+*
+* Output: pIsTableMiss - Whether table-miss occurred
+*
+* Returns: Pointer to best match flow entry
+*
+*******************************************************************/
+tOfcFlowEntry *OfcDpGetBestMatchFlow (tOfcMatchFields pktMatchFields,
+                                      struct list_head *pFlowEntryList,
+                                      __u8 *pIsTableMiss)
+{
+    struct list_head *pList = NULL;
+    tOfcFlowEntry    *pFlowEntry = NULL;
+    tOfcFlowEntry    *pBestMatchFlow = NULL;
+    tOfcMatchFields  tableMissEntry;
+    __u8             aNullMacAddr[OFC_MAC_ADDR_LEN];
+
+    memset (aNullMacAddr, 0, sizeof(aNullMacAddr));
+    memset (&tableMissEntry, 0, sizeof(tableMissEntry));
+    *pIsTableMiss = OFC_FALSE;
+
+    list_for_each (pList, pFlowEntryList)
+    {
+        pFlowEntry = (tOfcFlowEntry *) pList;
+        /* Match fields for this flow entry */
+
+        if (memcmp (pFlowEntry->matchFields.aDstMacAddr, 
+                    aNullMacAddr, OFC_MAC_ADDR_LEN))
+        {
+            /* Match destination MAC address */
+            if (memcmp (pFlowEntry->matchFields.aDstMacAddr,
+                        pktMatchFields.aDstMacAddr, OFC_MAC_ADDR_LEN))
+            {
+                continue;
+            }
+        }
+
+        if (memcmp (pFlowEntry->matchFields.aSrcMacAddr,
+                    aNullMacAddr, OFC_MAC_ADDR_LEN))
+        {
+            /* Match source MAC address */
+            if (memcmp (pFlowEntry->matchFields.aSrcMacAddr,
+                        pktMatchFields.aSrcMacAddr, OFC_MAC_ADDR_LEN))
+            {
+                continue;
+            }
+        }
+
+        if (pFlowEntry->matchFields.vlanId != 0)
+        {
+            /* Match VLAN ID */
+            if (pFlowEntry->matchFields.vlanId != 
+                pktMatchFields.vlanId)
+            {
+                continue;
+            }
+        }
+
+        if (pFlowEntry->matchFields.etherType != 0)
+        {
+            /* Match EtherType */
+            if (pFlowEntry->matchFields.etherType !=
+                pktMatchFields.etherType)
+            {
+                continue;
+            }
+        }
+
+        if (pFlowEntry->matchFields.srcIpAddr != 0)
+        {
+            /* Match source IP address */
+            if (pFlowEntry->matchFields.srcIpAddr !=
+                pktMatchFields.srcIpAddr)
+            {
+                continue;
+            }
+        }
+
+        if (pFlowEntry->matchFields.dstIpAddr != 0)
+        {
+            /* Match destination IP address */
+            if (pFlowEntry->matchFields.dstIpAddr !=
+                pktMatchFields.dstIpAddr)
+            {
+                continue;
+            }
+        }
+
+        if (pFlowEntry->matchFields.protocolType != 0)
+        {
+            /* Match IP protocol type */
+            if (pFlowEntry->matchFields.protocolType !=
+                pktMatchFields.protocolType)
+            {
+                continue;
+            }
+        }
+
+        if (pFlowEntry->matchFields.srcPortNum != 0)
+        {
+            /* Match L4 source port number */
+            if (pFlowEntry->matchFields.srcPortNum !=
+                pktMatchFields.srcPortNum)
+            {
+                continue;
+            }
+        }
+
+        if (pFlowEntry->matchFields.dstPortNum != 0)
+        {
+            /* Match L4 destination port number */
+            if (pFlowEntry->matchFields.dstPortNum !=
+                pktMatchFields.dstPortNum)
+            {
+                continue;
+            }
+        }
+
+        if (pFlowEntry->matchFields.inPort != 0)
+        {
+            /* Match packet input port */
+            if (pFlowEntry->matchFields.inPort !=
+                pktMatchFields.inPort)
+            {
+                continue;
+            }
+        }
+
+        /* Flow matched!! Determine whether this is best match */
+        if ((pBestMatchFlow == NULL) ||
+            (pFlowEntry->priority > pBestMatchFlow->priority))
+        {
+            pBestMatchFlow = pFlowEntry;
+        }
+    }
+
+    /* Check whether the best match flow is table-miss flow */
+    if (!memcmp (&pBestMatchFlow->matchFields, &tableMissEntry, 
+                 sizeof(tOfcMatchFields)))
+    {
+        /* Table-miss occurred */
+        *pIsTableMiss = OFC_TRUE;
+    }
+
+    return pBestMatchFlow;
+}
+
+/******************************************************************                                                                          
+* Function: OfcDpExecuteFlowInstr
 *
 * Description: This function processes instruction of matching
 *              flow entry
@@ -337,17 +572,18 @@ int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen,
 *        pInstr - Pointer to instruction list
 *
 * Output: pTableId - Pointer to new table Id
-          pOutPortList - Pointer to output port list
+*         pOutPortList - Pointer to output port list
+*         pNumOutPorts - Number of ports in output port list
 *
 * Returns: OFC_SUCCESS/OFC_FAILURE
 *
 *******************************************************************/
-int OfcExecFlowInstr (__u8 *pPkt, __u32 pktLen, __u8 inPort,
-                      struct list_head *pInstrList, __u8 *pTableId, 
-                      __u8 *pOutPortList)
+int OfcDpExecuteFlowInstr (__u8 *pPkt, __u32 pktLen, __u8 inPort,
+                           struct list_head *pInstrList, __u8 *pTableId, 
+                           __u32 *pOutPortList, __u8 *pNumOutPorts)
 {
     tOfcInstrList    *pInstr = NULL;
-    tOfcActionList   *pActions = NULL;
+    struct list_head *pActions = NULL;
     struct list_head *pList = NULL;
 
     list_for_each (pList, pInstrList)
@@ -357,8 +593,9 @@ int OfcExecFlowInstr (__u8 *pPkt, __u32 pktLen, __u8 inPort,
         {
             case OFCIT_APPLY_ACTIONS:
                 pActions = &pInstr->u.actionList;
-                OfcApplyInstrActions (pPkt, pktLen, inPort,
-                                      pOutPortList);
+                OfcDpApplyInstrActions (pPkt, pktLen, inPort,
+                                        pActions, pOutPortList,
+                                        pNumOutPorts);
                 break;
 
             case OFCIT_CLEAR_ACTIONS:
@@ -372,6 +609,49 @@ int OfcExecFlowInstr (__u8 *pPkt, __u32 pktLen, __u8 inPort,
                 break;
 
             default:
+                return OFC_FAILURE;
+        }
+    }
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcDpApplyInstrActions
+*
+* Description: This function applies the actions list specified in
+*              flow entry instructions
+*
+* Input: pPkt - Pointer to data packet
+*        pktLen - Packet length
+*        inPort - Input port
+*        pActions - Pointer to action list
+*
+* Output: pOutPortList - Pointer to output port list
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDpApplyInstrActions (__u8 *pPkt, __u32 pktLen, __u8 inPort,
+                            struct list_head *pActionsList,
+                            __u32 *pOutPortList, __u8 *pNumOutPorts)
+{
+    tOfcActionList   *pActions = NULL;
+    struct list_head *pList = NULL;
+    __u8             numPorts = *pNumOutPorts;
+
+    list_for_each (pList, pActionsList)
+    {
+        pActions = (tOfcActionList *) pList;
+        switch (pActions->actionType)
+        {
+            case OFCAT_OUTPUT:
+                pOutPortList[numPorts++] = pActions->u.outPort;
+                *pNumOutPorts = numPorts;
+                break;
+
+            default:
+                printk (KERN_CRIT "Unsupported action!!\r\n");
                 return OFC_FAILURE;
         }
     }
