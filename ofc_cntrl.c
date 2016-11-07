@@ -296,6 +296,9 @@ int OfcCpRxControlPacket (void)
         case OFPT_HELLO:
             OfcCpReplyHelloPacket(cntrlPkt);
             break;
+        case OFPT_FEATURES_REQUEST:
+            OfcCpSendFeatureReply(cntrlPkt);
+            break;
         default:
             return OFC_FAILURE;
     }
