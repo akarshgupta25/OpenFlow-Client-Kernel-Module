@@ -352,6 +352,25 @@ struct net_device *OfcGetNetDevByName (char *pIfName)
     return NULL;
 }
 
+struct net_device *OfcGetNetDevByIp (unsigned int ipAddr)
+{
+    struct net_device *pTempDev = NULL;
+
+    pTempDev = first_net_device (&init_net);
+    while (pTempDev)
+    {
+        for_ifa(pTempDev->ip_ptr) {
+            if ((ifa->ifa_mask & ifa->ifa_address) == (ifa->ifa_mask & htonl(ipAddr)))
+            {
+                printk(KERN_INFO "Device Found with the Ip Specified\r\n");
+                return pTempDev;
+            }
+        }
+        endfor_ifa(indev)
+        pTempDev = next_net_device (pTempDev);
+    }
+    return NULL;
+}
 /******************************************************************
 * Function: OfcDumpPacket
 *

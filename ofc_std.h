@@ -110,7 +110,47 @@ enum
 
 enum 
 {
-    OFPT_HELLO = 0,
+    OFPT_HELLO                    = 0,
+    OFPT_ERROR                    = 1,
+    OFPT_ECHO_REQUEST             = 2,
+    OFPT_ECHO_REPLY               = 3,
+    OFPT_EXPERIMENTER             = 4,
+    OFPT_FEATURES_REQUEST         = 5,
+    OFPT_FEATURES_REPLY           = 6,
+    OFPT_GET_CONFIG_REQUEST       = 7,
+    OFPT_GET_CONFIG_REPLY         = 8,
+    OFPT_SET_CONFIG               = 9,
+    OFPT_PACKET_IN                = 10,
+    OFPT_FLOW_REMOVED             = 11,
+    OFPT_PORT_STATUS              = 12,
+    OFPT_PACKET_OUT               = 13,
+    OFPT_FLOW_MOD                 = 14,
+    OFPT_GROUP_MOD                = 15,
+    OFPT_PORT_MOD                 = 16,
+    OFPT_TABLE_MOD                = 17,
+    OFPT_MULTIPART_REQUEST        = 18,
+    OFPT_MULTIPART_REPLY          = 19,
+    OFPT_BARRIER_REQUEST          = 20,
+    OFPT_BARRIER_REPLY            = 21,
+    OFPT_QUEUE_GET_CONFIG_REQUEST = 22,
+    OFPT_QUEUE_GET_CONFIG_REPLY   = 23,
+    OFPT_ROLE_REQUEST             = 24,
+    OFPT_ROLE_REPLY               = 25,
+    OFPT_GET_ASYNC_REQUEST        = 26,
+    OFPT_GET_ASYNC_REPLY          = 27,
+    OFPT_SET_ASYNC                = 28,
+    OFPT_METER_MOD                = 29
+};
+
+enum
+{
+    OFPC_FLOW_STATS   = 1 << 0,
+    OFPC_TABLE_STATS  = 1 << 1,
+    OFPC_PORT_STATS   = 1 << 2,
+    OFPC_GROUP_STATS  = 1 << 3,
+    OFPC_IP_REASM     = 1 << 5,
+    OFPC_QUEUE_STATS  = 1 << 6,
+    OFPC_PORT_BLOCKED = 1 << 8 
 };
 
 #endif /* __OFC_STD_H__ */

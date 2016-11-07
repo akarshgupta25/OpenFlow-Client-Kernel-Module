@@ -15,7 +15,7 @@
 tOfcCpGlobals gOfcCpGlobals;
 
 /******************************************************************                                                                          
-* Function: ofcSendHelloPacket
+* Function: ofcSendPacket
 *
 * Description: This function is used to send out the HELLO message
 *              that is created.
@@ -27,7 +27,7 @@ tOfcCpGlobals gOfcCpGlobals;
 * Returns: OFC_SUCCESS/OFC_FAILURE
 *
 *******************************************************************/
-int ofcSendHelloPacket (tOfcCpHeader *responseHeader)
+int ofcSendPacket (char *pkt, int size)
 {
     struct msghdr msg;
     struct iovec  iov;
@@ -35,18 +35,17 @@ int ofcSendHelloPacket (tOfcCpHeader *responseHeader)
 
     memset (&msg, 0, sizeof(msg));
     memset (&iov, 0, sizeof(iov));
-    iov.iov_base = responseHeader;
-    iov.iov_len = sizeof(tOfcCpHeader);
+    iov.iov_base = pkt;
+    iov.iov_len = size;
     msg.msg_iov = &iov;
     msg.msg_iovlen = 1;
 
     old_fs = get_fs();
     set_fs(KERNEL_DS);
     sock_sendmsg (gOfcCpGlobals.pCntrlSocket, &msg, 
-                           sizeof(tOfcCpHeader));
+                           size);
     set_fs(old_fs);
 
-    kfree(responseHeader);
     return OFC_SUCCESS;
 }
 
@@ -66,7 +65,7 @@ int ofcSendHelloPacket (tOfcCpHeader *responseHeader)
 *******************************************************************/
 int OfcCpInitiateHelloPacket (void)
 {
-    tOfcCpHeader *responseHeader;
+    tOfcCpHeader *responseHeader = NULL;
 
     responseHeader = kmalloc (sizeof(tOfcCpHeader), GFP_KERNEL);
     if (!responseHeader)
@@ -80,7 +79,13 @@ int OfcCpInitiateHelloPacket (void)
     responseHeader->ofcMsgLength = htons(sizeof(tOfcCpHeader));
     responseHeader->ofcTransId = htonl(OFC_INIT_TRANSACTION_ID);
    
-    return ofcSendHelloPacket(responseHeader);
+    if (ofcSendPacket((char *)responseHeader, sizeof(tOfcCpHeader)) != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "TWO\n");
+        return OFC_FAILURE;
+    }
+    kfree(responseHeader);
+    return OFC_SUCCESS;
 }
 
 /******************************************************************                                                                          
@@ -98,7 +103,7 @@ int OfcCpInitiateHelloPacket (void)
 *******************************************************************/
 int OfcCpReplyHelloPacket (char *cntrlPkt)
 {
-    tOfcCpHeader *responseHeader, *recvdHeader;
+    tOfcCpHeader *responseHeader = NULL;
     responseHeader = kmalloc (sizeof(tOfcCpHeader), GFP_KERNEL);
     if (!responseHeader)
     {
@@ -107,11 +112,65 @@ int OfcCpReplyHelloPacket (char *cntrlPkt)
         return OFC_FAILURE;
     }
 
-    recvdHeader = (tOfcCpHeader *)cntrlPkt;
-    memcpy(responseHeader, recvdHeader, sizeof(tOfcCpHeader));
+    memcpy(responseHeader, cntrlPkt, sizeof(tOfcCpHeader));
     responseHeader->ofcVersion = OFC_VERSION;
 
-    return ofcSendHelloPacket(responseHeader);
+    if (ofcSendPacket((char *)responseHeader, sizeof(tOfcCpHeader)) != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "THREE\n");
+        return OFC_FAILURE;
+    }
+    kfree(responseHeader);
+    return OFC_SUCCESS;
+}
+
+extern unsigned int gCntrlIpAddr;
+
+int OfcCpSendFeatureReply (char *cntrlPkt)
+{
+    tOfcCpFeatReply *responseMsg = NULL;
+    struct net_device *dev = NULL;
+
+    responseMsg = kmalloc (sizeof(tOfcCpFeatReply), GFP_KERNEL);
+    if (!responseMsg)
+    {
+        printk (KERN_CRIT "Failed to allocate memory to Feature Request "
+                "Response packet\n");
+        return OFC_FAILURE;
+    }
+
+    memset(responseMsg, 0, sizeof(tOfcCpFeatReply));
+
+    // Populate the header.
+    responseMsg->ofcHeader.ofcVersion   = OFC_VERSION;
+    responseMsg->ofcHeader.ofcType      = OFPT_FEATURES_REPLY;
+    responseMsg->ofcHeader.ofcMsgLength = sizeof(tOfcCpFeatReply);
+    responseMsg->ofcHeader.ofcTransId   = ((tOfcCpHeader *)cntrlPkt)->ofcTransId;
+
+    dev = OfcGetNetDevByIp(gCntrlIpAddr);
+    if (!dev)
+    {
+        printk (KERN_CRIT "Failed to retrieve interface for "
+                "controller IP\n ");
+        return OFC_FAILURE;
+    }
+    memcpy(&(responseMsg->datapathId)+OFC_CTRL_DATAPAT_ID_MAC_ADDR_OFFSET,
+           dev->dev_addr, 
+           OFC_MAC_ADDR_LEN);
+
+    responseMsg->maxBuffers   = OFC_MAX_PKT_BUFFER;
+    responseMsg->maxTables    = OFC_MAX_FLOW_TABLES;
+    responseMsg->auxilaryId   = OFC_CTRL_MAIN_CONNECTION;
+    responseMsg->capabilities = (OFPC_FLOW_STATS + 
+                                 OFPC_TABLE_STATS);
+
+    if (ofcSendPacket((char *)responseMsg, sizeof(tOfcCpFeatReply)) != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "ONE\n");
+        return OFC_FAILURE;
+    }
+    kfree(responseMsg);
+    return OFC_SUCCESS;
 }
 
 /******************************************************************                                                                          

@@ -25,6 +25,7 @@
 #include <linux/init.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
+#include <linux/inetdevice.h>
 
 #include "ofc_defn.h"
 #include "ofc_tdfs.h"

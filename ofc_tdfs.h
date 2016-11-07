@@ -154,17 +154,30 @@ typedef struct
 
 typedef struct
 {
-    __u8  ofcVersion;
-    __u8  ofcType;
-    __u16 ofcMsgLength;
-    __u32 ofcTransId;
+    __u8   ofcVersion;
+    __u8   ofcType;
+    __u16  ofcMsgLength;
+    __u32  ofcTransId;
 } tOfcCpHeader;
+
+typedef struct
+{
+    tOfcCpHeader  ofcHeader;
+    __u64         datapathId;
+    __u32         maxBuffers;
+    __u8          maxTables;
+    __u8          auxilaryId;
+    __u8          pad[2];
+    __u32         capabilities;
+    __u32         reserved;
+} tOfcCpFeatReply;
 
 /* Function Declarations */
 int OfcDpReceiveEvent (int events, int *pRxEvents);
 int OfcDpSendEvent (int events);
 void OfcDumpPacket (char *au1Packet, int len);
 struct net_device *OfcGetNetDevByName (char *pIfName);
+struct net_device *OfcGetNetDevByIp (unsigned int ipAddr);
 int OfcConvertStringToIp (char *pString, unsigned int *pIpAddr);
 
 int OfcDpMainTask (void *args);
