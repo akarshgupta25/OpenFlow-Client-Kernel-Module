@@ -119,14 +119,12 @@ static int __init OpenFlowClientStart (void)
         return OFC_FAILURE;
     }
 
-#if 0
     /* Initialize kernel module */
     if (OfcMainInit() != OFC_SUCCESS)
     {   
         printk (KERN_CRIT "Kernel module initialization failed!!\r\n");
         return OFC_FAILURE;
     }
-#endif
 
     /* Spawn OpenFlow control path task */
     gOfcGlobals.pOfcCpThread = kthread_run (OfcCpMainTask, NULL,
@@ -138,7 +136,6 @@ static int __init OpenFlowClientStart (void)
         return OFC_FAILURE;
     }
 
-#if 0
     /* Spawn OpenFlow data path task */
     gOfcGlobals.pOfcDpThread = kthread_run (OfcDpMainTask, NULL, 
                                             OFC_DP_TASK_NAME);
@@ -149,20 +146,15 @@ static int __init OpenFlowClientStart (void)
         kthread_stop (gOfcGlobals.pOfcCpThread);
 	    return OFC_FAILURE;
     }
-#endif
     return OFC_SUCCESS;
 }
 
 static void __exit OpenFlowClientStop (void)
 {
-#if 0
     kthread_stop (gOfcGlobals.pOfcDpThread);
-#endif
     kthread_stop (gOfcGlobals.pOfcCpThread);
     sock_release(gOfcCpGlobals.pCntrlSocket);
-#if 0
     nf_unregister_hook (&gOfcGlobals.netFilterOps);
-#endif
     printk (KERN_INFO "Openflow Client Stopped!!\r\n");
 }
 

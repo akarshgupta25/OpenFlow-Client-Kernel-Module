@@ -163,7 +163,8 @@ typedef struct
 typedef struct
 {
     tOfcCpHeader  ofcHeader;
-    __u64         datapathId;
+    __u8          impDatapathId[2];
+    __u8          macDatapathId[OFC_MAC_ADDR_LEN];
     __u32         maxBuffers;
     __u8          maxTables;
     __u8          auxilaryId;

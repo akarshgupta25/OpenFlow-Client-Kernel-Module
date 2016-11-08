@@ -125,7 +125,6 @@ int OfcCpReplyHelloPacket (char *cntrlPkt)
 }
 
 extern unsigned int gCntrlIpAddr;
-
 int OfcCpSendFeatureReply (char *cntrlPkt)
 {
     tOfcCpFeatReply *responseMsg = NULL;
@@ -144,7 +143,7 @@ int OfcCpSendFeatureReply (char *cntrlPkt)
     // Populate the header.
     responseMsg->ofcHeader.ofcVersion   = OFC_VERSION;
     responseMsg->ofcHeader.ofcType      = OFPT_FEATURES_REPLY;
-    responseMsg->ofcHeader.ofcMsgLength = sizeof(tOfcCpFeatReply);
+    responseMsg->ofcHeader.ofcMsgLength = htons(sizeof(tOfcCpFeatReply));
     responseMsg->ofcHeader.ofcTransId   = ((tOfcCpHeader *)cntrlPkt)->ofcTransId;
 
     dev = OfcGetNetDevByIp(gCntrlIpAddr);
@@ -154,14 +153,12 @@ int OfcCpSendFeatureReply (char *cntrlPkt)
                 "controller IP\n ");
         return OFC_FAILURE;
     }
-    memcpy(&(responseMsg->datapathId)+OFC_CTRL_DATAPAT_ID_MAC_ADDR_OFFSET,
-           dev->dev_addr, 
-           OFC_MAC_ADDR_LEN);
 
+    memcpy(responseMsg->macDatapathId, dev->dev_addr, OFC_MAC_ADDR_LEN);
     responseMsg->maxBuffers   = OFC_MAX_PKT_BUFFER;
     responseMsg->maxTables    = OFC_MAX_FLOW_TABLES;
     responseMsg->auxilaryId   = OFC_CTRL_MAIN_CONNECTION;
-    responseMsg->capabilities = (OFPC_FLOW_STATS + 
+    responseMsg->capabilities = htonl(OFPC_FLOW_STATS |
                                  OFPC_TABLE_STATS);
 
     if (ofcSendPacket((char *)responseMsg, sizeof(tOfcCpFeatReply)) != OFC_SUCCESS)
