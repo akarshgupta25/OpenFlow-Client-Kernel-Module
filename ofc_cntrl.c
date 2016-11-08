@@ -82,7 +82,6 @@ int OfcCpInitiateHelloPacket (void)
    
     if (ofcSendPacket((char *)responseHeader, sizeof(tOfcCpHeader)) != OFC_SUCCESS)
     {
-        printk (KERN_CRIT "TWO\n");
         return OFC_FAILURE;
     }
     kfree(responseHeader);
@@ -118,7 +117,6 @@ int OfcCpReplyHelloPacket (char *cntrlPkt)
 
     if (ofcSendPacket((char *)responseHeader, sizeof(tOfcCpHeader)) != OFC_SUCCESS)
     {
-        printk (KERN_CRIT "THREE\n");
         return OFC_FAILURE;
     }
     kfree(responseHeader);
@@ -178,7 +176,6 @@ int OfcCpSendFeatureReply (char *cntrlPkt)
 
     if (ofcSendPacket((char *)responseMsg, sizeof(tOfcCpFeatReply)) != OFC_SUCCESS)
     {
-        printk (KERN_CRIT "ONE\n");
         return OFC_FAILURE;
     }
     kfree(responseMsg);
