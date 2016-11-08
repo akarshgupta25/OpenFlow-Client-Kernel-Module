@@ -112,8 +112,9 @@ int OfcCpMainTask (void *args)
 *******************************************************************/
 int OfcCpRxControlPacket (void)
 {
-    __u8   *pCntrlPkt = NULL;
-    __u32  pktLen = 0;
+    tOfcOfHdr  *pOfHdr = NULL;
+    __u8       *pCntrlPkt = NULL;
+    __u32      pktLen = 0;
 
     if (OfcCpRecvCntrlPktOnSock (&pCntrlPkt, &pktLen) 
         != OFC_SUCCESS)
@@ -121,9 +122,80 @@ int OfcCpRxControlPacket (void)
         return OFC_FAILURE;
     }
 
-    printk (KERN_INFO "Control packet recevied\r\n"); 
+    printk (KERN_INFO "Control packet received\r\n"); 
+
+    /* Validate OpenFlow version */
+    pOfHdr = (tOfcOfHdr *) ((void *) pCntrlPkt);
+    if (pOfHdr->version != OFC_VERSION)
+    {
+        printk (KERN_CRIT "OpenFlow version mismatch!!\r\n");
+        /* TODO: Send error message and handle for higher versions */
+        kfree (pCntrlPkt);
+        pCntrlPkt = NULL;
+        return OFC_FAILURE;
+    }
+
+    /* Validate packet type */
+    if (pOfHdr->type >= OFPT_MAX_PKT_TYPE)
+    {
+        printk (KERN_CRIT "Invalid OpenFlow packet type!!\r\n");
+        /* TODO: Send error message */
+        kfree (pCntrlPkt);
+        pCntrlPkt = NULL;
+        return OFC_FAILURE;
+    }
+
+    switch (pOfHdr->type)
+    {
+        case OFPT_HELLO:
+            /* Write function here for handling hello packet
+             * and inside the function send hello packet as
+             * reply */
+            break;
+
+        case OFPT_ECHO_REQUEST:
+            break;
+
+        case OFPT_ECHO_REPLY:
+            break;
+
+        case OFPT_FEATURES_REQUEST:
+            /* Write a function here for handling features
+             * request packet and inside the function send
+             * features reply packet */
+            break;
+
+        case OFPT_GET_CONFIG_REQUEST:
+            break;
+
+        case OFPT_SET_CONFIG:
+            break;
+
+        case OFPT_PACKET_OUT:
+            break;
+
+        case OFPT_FLOW_MOD:
+            break;
+
+        case OFPT_PORT_MOD:
+            break;
+
+        case OFPT_TABLE_MOD:
+            break;
+
+        case OFPT_MULTIPART_REQUEST:
+            break;
+
+        case OFPT_BARRIER_REQUEST:
+            break;
+
+        default:
+            printk (KERN_CRIT "Action not currently supported\r\n");
+            break; 
+    }
 
     kfree (pCntrlPkt);
+    pCntrlPkt = NULL;
     return OFC_SUCCESS;
 }
 
@@ -160,18 +232,20 @@ void OfcCpRxDataPathMsg (void)
         {
             printk (KERN_INFO "Failed to construct Packet-in "
                               "message\r\n");
-            return;
+            kfree (pMsgQ);
+            pMsgQ = NULL;
+            continue;
         }
-        pktLen = ntohs (((tOfcOfHdr *) pOpenFlowPkt)->length);
 
+        pktLen = ntohs (((tOfcOfHdr *) pOpenFlowPkt)->length);
         OfcCpSendCntrlPktFromSock (pOpenFlowPkt, pktLen);
 
         printk (KERN_INFO "OpenFlow Packet:\r\n");
         OfcDumpPacket (pOpenFlowPkt, pktLen);
 
-        kfree (pOpenFlowPkt);
-
         /* Release message */
+        kfree (pOpenFlowPkt);
+        pOpenFlowPkt = NULL;
         kfree (pMsgQ);
         pMsgQ = NULL;
     }
@@ -418,7 +492,7 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
     pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
     pOxmTlv->field = OFCXMT_OFB_IN_PORT << 1;
     pOxmTlv->length = sizeof (__u32);
-    fourByteField = matchFields.inPort;
+    fourByteField = inPort;
     fourByteField = htonl (fourByteField);
     memcpy (pOxmTlv->aValue, &fourByteField, sizeof(fourByteField));
     matchTlvLen += oxmTlvLen + pOxmTlv->length;
@@ -467,10 +541,12 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
     {
         printk (KERN_CRIT "Failed to allocate memory to packet-in"
                           " message\r\n");
+        kfree (pMatchTlv);
+        pMatchTlv = NULL;
         return OFC_FAILURE;
     }
-    memset (pPktInHdr, 0, pktInHdrLen);
 
+    memset (pPktInHdr, 0, pktInHdrLen);
     pPktInHdr->bufId = htonl (OFC_NO_BUFFER);
     pPktInHdr->totLength = htons (pktLen);
     pPktInHdr->reason = msgType;
@@ -489,6 +565,8 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
                          OFPT_PACKET_IN, 0, ppOpenFlowPkt);
     
     kfree (pPktInHdr);
+    pPktInHdr = NULL;
     kfree (pMatchTlv);
+    pMatchTlv = NULL;
     return OFC_SUCCESS;
 }

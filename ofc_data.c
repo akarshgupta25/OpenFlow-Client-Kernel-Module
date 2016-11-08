@@ -139,13 +139,6 @@ int OfcDpRxDataPacket (void)
         /* Process packet using OpenFlow Pipeline */
         OfcDpProcessPktOpenFlowPipeline (pDataPkt, pktLen, dataIfNum);
 
-#if 0
-        OfcDumpPacket (pDataPkt, pktLen);
-        /* Send packet to control path task */
-        OfcDpSendToCpQ (pDataPkt, pktLen);
-        OfcCpSendEvent (OFC_DP_TO_CP_EVENT);
-#endif
-
         /* Release message */
         kfree (pMsgQ);
         pMsgQ = NULL;

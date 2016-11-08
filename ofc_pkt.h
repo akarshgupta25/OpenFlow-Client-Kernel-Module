@@ -18,6 +18,25 @@ typedef struct
 
 typedef struct
 {
+    tOfcEightByte datapathId;
+    __u32         numBuffers;
+    __u8          numTables;
+    __u8          auxId;
+    __u8          aPad[2];
+    __u32         flowStats:1;
+    __u32         tableStats:1;
+    __u32         portStats:1;
+    __u32         grpStats:1;
+    __u32         notSupp1:1;
+    __u32         ipReasm:1;
+    __u32         queueStats:1;
+    __u32         notSupp2:1;
+    __u32         portBlocked:1;
+    __u32         reserved;
+} tOfcFeatRply;
+
+typedef struct
+{
     __u8    version; 
     __u8    type;
     __u16   length;
@@ -41,12 +60,12 @@ typedef struct
 
 typedef struct
 {
-    __u32                  bufId;
-    __u16                 totLength;
-    __u8                  reason;
-    __u8                  tableId;
+    __u32         bufId;
+    __u16         totLength;
+    __u8          reason;
+    __u8          tableId;
     tOfcEightByte cookie;
-    tOfcMatchTlv          matchTlv;
+    tOfcMatchTlv  matchTlv;
 } tOfcPktInHdr;
 
 #endif /* __OFC_PKT_H__ */

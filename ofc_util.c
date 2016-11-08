@@ -598,6 +598,8 @@ __u32 OfcDpRcvDataPktFromSock (__u8 dataIfNum, __u8 **ppPkt,
     {
         printk (KERN_CRIT "Failed to receive message from data " 
                           "socket!!\r\n");
+        kfree (pDataPkt);
+        pDataPkt = NULL;
         return OFC_FAILURE;
     }
 
@@ -697,6 +699,8 @@ int OfcCpRecvCntrlPktOnSock (__u8 **ppPkt, __u32 *pPktLen)
     if (msgLen == 0)
     {
         printk (KERN_CRIT "Failed to receive control packet\r\n");
+        kfree (pCntrlPkt);
+        pCntrlPkt = NULL;
         return OFC_FAILURE;
     }
 
