@@ -352,6 +352,20 @@ struct net_device *OfcGetNetDevByName (char *pIfName)
     return NULL;
 }
 
+/******************************************************************                                                                          
+* Function: OfcGetNetDevByIp
+*
+* Description: This function returns the net device pointer
+*              corresponding to the ip address massed.
+*
+* Input: ipAddr - IP address that belongs in the subnet of the net
+*                 device.
+*
+* Output: None
+*
+* Returns: Pointer to network device
+*
+*******************************************************************/
 struct net_device *OfcGetNetDevByIp (unsigned int ipAddr)
 {
     struct net_device *pTempDev = NULL;
@@ -371,6 +385,7 @@ struct net_device *OfcGetNetDevByIp (unsigned int ipAddr)
     }
     return NULL;
 }
+
 /******************************************************************
 * Function: OfcDumpPacket
 *

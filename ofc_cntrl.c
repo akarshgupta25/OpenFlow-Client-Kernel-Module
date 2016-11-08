@@ -17,12 +17,13 @@ tOfcCpGlobals gOfcCpGlobals;
 /******************************************************************                                                                          
 * Function: ofcSendPacket
 *
-* Description: This function is used to send out the HELLO message
+* Description: This function is used to send out the packet
 *              that is created.
 *
-* Input: responseHeader - Pointer to the message created.
+* Input: pkt  - Pointer to the packet created.
+*        size - Size of the packet.
 *
-* Output: None
+* Output: Sends the packet out.
 *
 * Returns: OFC_SUCCESS/OFC_FAILURE
 *
@@ -125,6 +126,20 @@ int OfcCpReplyHelloPacket (char *cntrlPkt)
 }
 
 extern unsigned int gCntrlIpAddr;
+
+/******************************************************************                                                                          
+* Function: OfcCpSendFeatureReply
+*
+* Description: This function is invoked to reply to FEATURE_REQUEST
+*              message from the controller.
+*
+* Input: cntrlPkt - The packet received from the controller.
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
 int OfcCpSendFeatureReply (char *cntrlPkt)
 {
     tOfcCpFeatReply *responseMsg = NULL;
