@@ -26,9 +26,9 @@
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 
+#include "ofc_pkt.h"
 #include "ofc_defn.h"
 #include "ofc_tdfs.h"
 #include "ofc_std.h"
-#include "ofc_pkt.h"
 
 #endif /* __LINUX_HEADERS_H__ */
