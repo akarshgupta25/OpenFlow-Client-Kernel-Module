@@ -125,6 +125,7 @@ static int __init OpenFlowClientStart (void)
         printk (KERN_CRIT "Kernel module initialization failed!!\r\n");
         return OFC_FAILURE;
     }
+
     /* Spawn OpenFlow control path task */
     gOfcGlobals.pOfcCpThread = kthread_run (OfcCpMainTask, NULL,
                                             OFC_CP_TASK_NAME);
@@ -145,7 +146,6 @@ static int __init OpenFlowClientStart (void)
         kthread_stop (gOfcGlobals.pOfcCpThread);
 	    return OFC_FAILURE;
     }
-
     return OFC_SUCCESS;
 }
 

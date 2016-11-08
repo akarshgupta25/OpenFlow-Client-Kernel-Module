@@ -39,6 +39,7 @@
 #define OFC_MAX_FLOW_ENTRIES  20
 #define OFC_MIN_FLOW_PRIORITY 1
 #define OFC_FIRST_TABLE_INDEX 0
+#define OFC_MAX_PKT_BUFFER    htonl(0x111)
 
 #define OFC_MAC_ADDR_LEN        6
 #define OFC_IP_PROT_TYPE_OFFSET 9
@@ -51,5 +52,6 @@
 
 #define OFC_VERSION 0x04
 #define OFC_INIT_TRANSACTION_ID 0x01
+#define OFC_CTRL_MAIN_CONNECTION 0x0
 
 #endif /* __OFC_DEFN_H__ */
