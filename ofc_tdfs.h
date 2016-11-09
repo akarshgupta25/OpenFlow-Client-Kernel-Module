@@ -57,11 +57,13 @@ typedef struct
     int              isModInit;
 } tOfcCpGlobals;
 
-typedef struct 
+#if 0
+typedef struct _tOfcEightByte
 {    
     __u32   hi;     
     __u32   lo;                    
 } tOfcEightByte;
+#endif
 
 typedef struct
 {
@@ -75,6 +77,7 @@ typedef struct
     __u32  dstIpAddr;
     __u16  srcPortNum;
     __u16  dstPortNum;
+    __u8   l4HeaderType;
 } tOfcMatchFields;
 
 typedef struct
@@ -152,27 +155,6 @@ typedef struct
     __u32            outPort;
 } tOfcOutPortList;
 
-typedef struct
-{
-    __u8   ofcVersion;
-    __u8   ofcType;
-    __u16  ofcMsgLength;
-    __u32  ofcTransId;
-} tOfcCpHeader;
-
-typedef struct
-{
-    tOfcCpHeader  ofcHeader;
-    __u8          impDatapathId[2];
-    __u8          macDatapathId[OFC_MAC_ADDR_LEN];
-    __u32         maxBuffers;
-    __u8          maxTables;
-    __u8          auxilaryId;
-    __u8          pad[2];
-    __u32         capabilities;
-    __u32         reserved;
-} tOfcCpFeatReply;
-
 /* Function Declarations */
 int OfcDpReceiveEvent (int events, int *pRxEvents);
 int OfcDpSendEvent (int events);
@@ -215,6 +197,16 @@ int OfcCpCreateCntrlSocket (void);
 int OfcCpRxControlPacket (void);
 int OfcCpSendToDpQ (__u8 *pPkt, __u32 pktLen);
 tDpCpMsgQ *OfcCpRecvFromDpMsgQ (void);
+int OfcCpRecvCntrlPktOnSock (__u8 **ppPkt, __u32 *pPktLen);
+int OfcCpSendCntrlPktFromSock (__u8 *pPkt, __u32 pktLen);
 void OfcCpRxDataPathMsg (void);
+int OfcCpAddOpenFlowHdr (__u8 *pPktHdr, __u16 pktHdrLen,
+                         __u8 msgType, __u32 xid,
+                         __u8 **ppOfPkt);
+int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
+                            __u8 msgType, __u8 tableId,
+                            tOfcEightByte cookie,
+                            tOfcMatchFields matchFields,
+                            __u8 **ppOpenFlowPkt);
 
 #endif /* __OFC_TDFS_H__ */

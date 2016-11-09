@@ -139,13 +139,6 @@ int OfcDpRxDataPacket (void)
         /* Process packet using OpenFlow Pipeline */
         OfcDpProcessPktOpenFlowPipeline (pDataPkt, pktLen, dataIfNum);
 
-#if 0
-        OfcDumpPacket (pDataPkt, pktLen);
-        /* Send packet to control path task */
-        OfcDpSendToCpQ (pDataPkt, pktLen);
-        OfcCpSendEvent (OFC_DP_TO_CP_EVENT);
-#endif
-
         /* Release message */
         kfree (pMsgQ);
         pMsgQ = NULL;
@@ -353,7 +346,8 @@ int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen,
             memset (&msgQ, 0, sizeof(msgQ));
             msgQ.pPkt = pPkt;
             msgQ.pktLen = pktLen;
-            msgQ.inPort = inPort;
+            /* Port n in switch corresponds to port n+1 for controller */
+            msgQ.inPort = inPort + 1;
             msgQ.msgType = (isTableMiss == OFC_TRUE) ? OFCR_NO_MATCH :
                                                        OFCR_ACTION;
             msgQ.tableId = pMatchFlow->tableId;

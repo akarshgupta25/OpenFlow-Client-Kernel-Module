@@ -13,172 +13,38 @@
 #include "ofc_hdrs.h"
 
 tOfcCpGlobals gOfcCpGlobals;
-
-/******************************************************************                                                                          
-* Function: ofcSendPacket
-*
-* Description: This function is used to send out the packet
-*              that is created.
-*
-* Input: pkt  - Pointer to the packet created.
-*        size - Size of the packet.
-*
-* Output: Sends the packet out.
-*
-* Returns: OFC_SUCCESS/OFC_FAILURE
-*
-*******************************************************************/
-int ofcSendPacket (char *pkt, int size)
-{
-    struct msghdr msg;
-    struct iovec  iov;
-    mm_segment_t  old_fs;
-
-    memset (&msg, 0, sizeof(msg));
-    memset (&iov, 0, sizeof(iov));
-    iov.iov_base = pkt;
-    iov.iov_len = size;
-    msg.msg_iov = &iov;
-    msg.msg_iovlen = 1;
-
-    old_fs = get_fs();
-    set_fs(KERNEL_DS);
-    sock_sendmsg (gOfcCpGlobals.pCntrlSocket, &msg, 
-                           size);
-    set_fs(old_fs);
-
-    return OFC_SUCCESS;
-}
-
-/******************************************************************                                                                          
-* Function: OfcCpInitiateHelloPacket
-*
-* Description: This function is invoked to create the HELLO packet
-*              once the TCP connection is setup. Once created,
-*              it would invoke the send function to send it out.
-*
-* Input: None
-*
-* Output: None
-*
-* Returns: OFC_SUCCESS/OFC_FAILURE
-*
-*******************************************************************/
-int OfcCpInitiateHelloPacket (void)
-{
-    tOfcCpHeader *responseHeader = NULL;
-
-    responseHeader = kmalloc (sizeof(tOfcCpHeader), GFP_KERNEL);
-    if (!responseHeader)
-    {
-        printk (KERN_CRIT "Failed to allocate memory to Hello Response"
-                "packet\n");
-        return OFC_FAILURE;
-    }
-    responseHeader->ofcVersion = OFC_VERSION;
-    responseHeader->ofcType = OFPT_HELLO;
-    responseHeader->ofcMsgLength = htons(sizeof(tOfcCpHeader));
-    responseHeader->ofcTransId = htonl(OFC_INIT_TRANSACTION_ID);
-   
-    if (ofcSendPacket((char *)responseHeader, sizeof(tOfcCpHeader)) != OFC_SUCCESS)
-    {
-        return OFC_FAILURE;
-    }
-    kfree(responseHeader);
-    return OFC_SUCCESS;
-}
-
-/******************************************************************                                                                          
-* Function: OfcCpReplyHelloPacket
-*
-* Description: This function is invoked to reply to the HELLO message
-*              from the controller.
-*
-* Input: cntrlPkt - The packet received from the controller.
-*
-* Output: None
-*
-* Returns: OFC_SUCCESS/OFC_FAILURE
-*
-*******************************************************************/
-int OfcCpReplyHelloPacket (char *cntrlPkt)
-{
-    tOfcCpHeader *responseHeader = NULL;
-    responseHeader = kmalloc (sizeof(tOfcCpHeader), GFP_KERNEL);
-    if (!responseHeader)
-    {
-        printk (KERN_CRIT "Failed to allocate memory to Hello Response"
-                "packet\n");
-        return OFC_FAILURE;
-    }
-
-    memcpy(responseHeader, cntrlPkt, sizeof(tOfcCpHeader));
-    responseHeader->ofcVersion = OFC_VERSION;
-
-    if (ofcSendPacket((char *)responseHeader, sizeof(tOfcCpHeader)) != OFC_SUCCESS)
-    {
-        return OFC_FAILURE;
-    }
-    kfree(responseHeader);
-    return OFC_SUCCESS;
-}
-
 extern unsigned int gCntrlIpAddr;
 
 /******************************************************************                                                                          
-* Function: OfcCpSendFeatureReply
+* Function: OfcCpSendHelloPacket
 *
-* Description: This function is invoked to reply to FEATURE_REQUEST
-*              message from the controller.
+* Description: This function is invoked to create the HELLO packet.
+*              It would invoke the OfcCpSendCntrlPktFromSock function 
+*              to send it out.
 *
-* Input: cntrlPkt - The packet received from the controller.
+* Input: xid - Transaction ID.
 *
-* Output: None
+* Output: Send the HELLO packet out.
 *
 * Returns: OFC_SUCCESS/OFC_FAILURE
 *
 *******************************************************************/
-int OfcCpSendFeatureReply (char *cntrlPkt)
+int OfcCpSendHelloPacket (__u32 xid)
 {
-    tOfcCpFeatReply *responseMsg = NULL;
-    struct net_device *dev = NULL;
+    __u8 *helloPkt = NULL;
 
-    responseMsg = kmalloc (sizeof(tOfcCpFeatReply), GFP_KERNEL);
-    if (!responseMsg)
-    {
-        printk (KERN_CRIT "Failed to allocate memory to Feature Request "
-                "Response packet\n");
-        return OFC_FAILURE;
-    }
-
-    memset(responseMsg, 0, sizeof(tOfcCpFeatReply));
-
-    // Populate the header.
-    responseMsg->ofcHeader.ofcVersion   = OFC_VERSION;
-    responseMsg->ofcHeader.ofcType      = OFPT_FEATURES_REPLY;
-    responseMsg->ofcHeader.ofcMsgLength = htons(sizeof(tOfcCpFeatReply));
-    responseMsg->ofcHeader.ofcTransId   = ((tOfcCpHeader *)cntrlPkt)->ofcTransId;
-
-    dev = OfcGetNetDevByIp(gCntrlIpAddr);
-    if (!dev)
-    {
-        printk (KERN_CRIT "Failed to retrieve interface for "
-                "controller IP\n ");
-        return OFC_FAILURE;
-    }
-
-    memcpy(responseMsg->macDatapathId, dev->dev_addr, OFC_MAC_ADDR_LEN);
-    responseMsg->maxBuffers   = OFC_MAX_PKT_BUFFER;
-    responseMsg->maxTables    = OFC_MAX_FLOW_TABLES;
-    responseMsg->auxilaryId   = OFC_CTRL_MAIN_CONNECTION;
-    responseMsg->capabilities = htonl(OFPC_FLOW_STATS |
-                                 OFPC_TABLE_STATS);
-
-    if (ofcSendPacket((char *)responseMsg, sizeof(tOfcCpFeatReply)) != OFC_SUCCESS)
+    if ((OfcCpAddOpenFlowHdr(NULL, 
+                        0, 
+                        OFPT_HELLO, 
+                        xid, 
+                        &helloPkt) != OFC_SUCCESS) || 
+        (OfcCpSendCntrlPktFromSock(helloPkt, 
+                                  sizeof(tOfcOfHdr)) != OFC_SUCCESS))
     {
         return OFC_FAILURE;
     }
-    kfree(responseMsg);
+
+    kfree(helloPkt);
     return OFC_SUCCESS;
 }
 
@@ -209,13 +75,13 @@ int OfcCpMainInit (void)
     /* Create TCP socket to interact with controller */ 
     if (OfcCpCreateCntrlSocket() != OFC_SUCCESS)
     {
-        printk (KERN_CRIT "Data socket creation failed!!\r\n");
+        printk (KERN_CRIT "Control socket creation failed!!\r\n");
         return OFC_FAILURE;
     }
 
     gOfcCpGlobals.isModInit = OFC_TRUE;
 
-    return OfcCpInitiateHelloPacket();
+    return OfcCpSendHelloPacket(htonl(OFC_INIT_TRANSACTION_ID));
 }
 
 /******************************************************************                                                                          
@@ -251,20 +117,77 @@ int OfcCpMainTask (void *args)
             if (event & OFC_CTRL_PKT_EVENT)
             {
                 /* Receive packet from controller */
-                printk (KERN_INFO "Call OfcCpRxControlPacket\r\n");
                 OfcCpRxControlPacket();
             }
 
             if (event & OFC_DP_TO_CP_EVENT)
             {
                 /* Process information sent by data path task */
-                printk (KERN_INFO "Packet Received from data path task\r\n");
                 OfcCpRxDataPathMsg();
             }
         }
     }
     return OFC_SUCCESS;
 }
+
+/******************************************************************                                                                          
+* Function: OfcCpSendFeatureReply
+*
+* Description: This function is invoked to reply to FEATURE_REQUEST
+*              message from the controller.
+*
+* Input: cntrlPkt - The packet received from the controller.
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpSendFeatureReply (char *cntrlPkt)
+{
+    tOfcCpFeatReply *responseMsg = NULL;
+    struct net_device *dev = NULL;
+    __u8 *replyPkt = NULL;
+
+    responseMsg = kmalloc (sizeof(tOfcCpFeatReply), GFP_KERNEL);
+    if (!responseMsg)
+    {
+        printk (KERN_CRIT "Failed to allocate memory to Feature Request "
+                "Response packet\n");
+        return OFC_FAILURE;
+    }
+    memset(responseMsg, 0, sizeof(tOfcCpFeatReply));
+
+    dev = OfcGetNetDevByIp(gCntrlIpAddr);
+    if (!dev)
+    {
+        printk (KERN_CRIT "Failed to retrieve interface for "
+                "controller IP\n ");
+        return OFC_FAILURE;
+    }
+
+    memcpy(responseMsg->macDatapathId, dev->dev_addr, OFC_MAC_ADDR_LEN);
+    responseMsg->maxBuffers   = OFC_MAX_PKT_BUFFER;
+    responseMsg->maxTables    = OFC_MAX_FLOW_TABLES;
+    responseMsg->auxilaryId   = OFC_CTRL_MAIN_CONNECTION;
+    responseMsg->capabilities = htonl(OFPC_FLOW_STATS | OFPC_TABLE_STATS);
+
+    if ((OfcCpAddOpenFlowHdr((__u8 *)responseMsg, 
+                             sizeof(tOfcCpFeatReply),
+                             OFPT_FEATURES_REPLY, 
+                             ((tOfcOfHdr *)cntrlPkt)->xid, 
+                             &replyPkt) != OFC_SUCCESS) || 
+        (OfcCpSendCntrlPktFromSock(replyPkt, 
+                                   ntohs(((tOfcOfHdr *)replyPkt)->length)) != OFC_SUCCESS))
+    {
+        return OFC_FAILURE;
+    }
+
+    kfree(responseMsg);
+    kfree(replyPkt);
+    return OFC_SUCCESS;
+}
+
 
 /******************************************************************                                                                          
 * Function: OfcCpRxControlPacket
@@ -281,39 +204,88 @@ int OfcCpMainTask (void *args)
 *******************************************************************/
 int OfcCpRxControlPacket (void)
 {
-    struct msghdr msg;
-    struct iovec  iov;
-    mm_segment_t  old_fs;
-    char          cntrlPkt[OFC_MTU_SIZE];
-    int           msgLen = 0;
+    tOfcOfHdr  *pOfHdr = NULL;
+    __u8       *pCntrlPkt = NULL;
+    __u32      pktLen = 0;
 
-    memset (&msg, 0, sizeof(msg));
-    memset (&iov, 0, sizeof(iov));
-    memset (cntrlPkt, 0, sizeof(cntrlPkt));
-    iov.iov_base = cntrlPkt;
-    iov.iov_len = sizeof(cntrlPkt);
-    msg.msg_iov = &iov;
-    msg.msg_iovlen = 1;
-    old_fs = get_fs();
-    set_fs(KERNEL_DS);
-    msgLen = sock_recvmsg (gOfcCpGlobals.pCntrlSocket, &msg, 
-                           sizeof(cntrlPkt), 0);
-    set_fs(old_fs);
-
-    switch (((tOfcCpHeader *)cntrlPkt)->ofcType)
+    if (OfcCpRecvCntrlPktOnSock (&pCntrlPkt, &pktLen) 
+        != OFC_SUCCESS)
     {
-        case OFPT_HELLO:
-            OfcCpReplyHelloPacket(cntrlPkt);
-            break;
-        case OFPT_FEATURES_REQUEST:
-            OfcCpSendFeatureReply(cntrlPkt);
-            break;
-        default:
-            return OFC_FAILURE;
+        return OFC_FAILURE;
     }
 
-    OfcDumpPacket (cntrlPkt, msgLen);
+    printk (KERN_INFO "Control packet received\r\n"); 
 
+    /* Validate OpenFlow version */
+    pOfHdr = (tOfcOfHdr *) ((void *) pCntrlPkt);
+    #if 0
+    if (pOfHdr->version != OFC_VERSION)
+    {
+        printk (KERN_CRIT "OpenFlow version mismatch!!\r\n");
+        /* TODO: Send error message and handle for higher versions */
+        kfree (pCntrlPkt);
+        pCntrlPkt = NULL;
+        return OFC_FAILURE;
+    }
+    #endif
+
+    /* Validate packet type */
+    if (pOfHdr->type >= OFPT_MAX_PKT_TYPE)
+    {
+        printk (KERN_CRIT "Invalid OpenFlow packet type!!\r\n");
+        /* TODO: Send error message */
+        kfree (pCntrlPkt);
+        pCntrlPkt = NULL;
+        return OFC_FAILURE;
+    }
+
+    switch (pOfHdr->type)
+    {
+        case OFPT_HELLO:
+            OfcCpSendHelloPacket(pOfHdr->xid);
+            break;
+
+        case OFPT_ECHO_REQUEST:
+            break;
+
+        case OFPT_ECHO_REPLY:
+            break;
+
+        case OFPT_FEATURES_REQUEST:
+            OfcCpSendFeatureReply(pCntrlPkt);
+            break;
+
+        case OFPT_GET_CONFIG_REQUEST:
+            break;
+
+        case OFPT_SET_CONFIG:
+            break;
+
+        case OFPT_PACKET_OUT:
+            break;
+
+        case OFPT_FLOW_MOD:
+            break;
+
+        case OFPT_PORT_MOD:
+            break;
+
+        case OFPT_TABLE_MOD:
+            break;
+
+        case OFPT_MULTIPART_REQUEST:
+            break;
+
+        case OFPT_BARRIER_REQUEST:
+            break;
+
+        default:
+            printk (KERN_CRIT "Action not currently supported\r\n");
+            break; 
+    }
+
+    kfree (pCntrlPkt);
+    pCntrlPkt = NULL;
     return OFC_SUCCESS;
 }
 
@@ -333,15 +305,37 @@ int OfcCpRxControlPacket (void)
 void OfcCpRxDataPathMsg (void)
 {
     tDpCpMsgQ *pMsgQ = NULL;
+    __u8      *pOpenFlowPkt = NULL;
+    __u16     pktLen = 0;
 
     down_interruptible (&gOfcCpGlobals.dpMsgQSemId);
 
     while ((pMsgQ = OfcCpRecvFromDpMsgQ()) != NULL)
     {
-        printk (KERN_INFO "Dequeued message from data path queue\r\n");
-        OfcDumpPacket (pMsgQ->pPkt, pMsgQ->pktLen);
+        /* Send packet as packet-in to controller */
+        OfcCpConstructPacketIn (pMsgQ->pPkt, pMsgQ->pktLen, 
+                                pMsgQ->inPort, pMsgQ->msgType,
+                                pMsgQ->tableId, pMsgQ->cookie,
+                                pMsgQ->pFlowEntry->matchFields,
+                                &pOpenFlowPkt);
+        if (pOpenFlowPkt == NULL)
+        {
+            printk (KERN_INFO "Failed to construct Packet-in "
+                              "message\r\n");
+            kfree (pMsgQ);
+            pMsgQ = NULL;
+            continue;
+        }
+
+        pktLen = ntohs (((tOfcOfHdr *) pOpenFlowPkt)->length);
+        OfcCpSendCntrlPktFromSock (pOpenFlowPkt, pktLen);
+
+        printk (KERN_INFO "OpenFlow Packet:\r\n");
+        OfcDumpPacket (pOpenFlowPkt, pktLen);
 
         /* Release message */
+        kfree (pOpenFlowPkt);
+        pOpenFlowPkt = NULL;
         kfree (pMsgQ);
         pMsgQ = NULL;
     }
@@ -349,4 +343,320 @@ void OfcCpRxDataPathMsg (void)
     up (&gOfcCpGlobals.dpMsgQSemId);
 
     return;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpAddOpenFlowHdr
+*
+* Description: This function adds OpenFlow standard header to
+*              an OpenFlow packet type
+*
+* Input: 
+*
+* Output: ppOpenFlowPkt - Pointer to OpenFlow packet
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpAddOpenFlowHdr (__u8 *pPktHdr, __u16 pktHdrLen,
+                         __u8 msgType, __u32 xid, 
+                         __u8 **ppOfPkt)
+{
+    tOfcOfHdr *pOfHdr = NULL;
+    __u16     ofHdrLen = 0;
+    
+    ofHdrLen = OFC_OPENFLOW_HDR_LEN + pktHdrLen;
+    pOfHdr = (tOfcOfHdr *) kmalloc (ofHdrLen, GFP_KERNEL);
+    if (pOfHdr == NULL)
+    {
+        printk (KERN_CRIT "Failed to allocate memory to OpenFlow "
+                          "header\r\n");
+        return OFC_FAILURE;
+    }
+    
+    memset (pOfHdr, 0, ofHdrLen);
+    pOfHdr->version = OFC_VERSION;
+    pOfHdr->type = msgType;
+    pOfHdr->length = htons (ofHdrLen);
+    pOfHdr->xid = xid;
+
+    if (pPktHdr != NULL)
+    {
+        memcpy (((__u8 *) pOfHdr) + OFC_OPENFLOW_HDR_LEN, 
+                pPktHdr, pktHdrLen);
+    }
+
+    *ppOfPkt = (__u8 *) pOfHdr;
+    return OFC_SUCCESS;
+}
+
+
+/******************************************************************                                                                          
+* Function: OfcCpConstructPacketIn
+*
+* Description: This function constructs packet-in message to be
+*              sent to the controller
+*
+* Input: 
+*
+* Output: ppOpenFlowPkt - Pointer to OpenFlow packet
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort, 
+                            __u8 msgType, __u8 tableId, 
+                            tOfcEightByte cookie, 
+                            tOfcMatchFields matchFields,
+                            __u8 **ppOpenFlowPkt)
+{
+    tOfcPktInHdr     *pPktInHdr = NULL;
+    tOfcMatchTlv     *pMatchTlv = NULL;
+    tOfcMatchOxmTlv  *pOxmTlv = NULL;
+    __u32            fourByteField = 0;
+    __u16            twoByteField = 0;
+    __u16            pktInLen = 0;
+    __u16            pktInHdrLen = 0;
+    __u16            matchTlvLen = 0;
+    __u8             oxmTlvLen = 0;
+    __u8             padBytes = 0;
+    __u8             aNullMacAddr[OFC_MAC_ADDR_LEN];
+    
+    /* Construct match field TLV  */
+    pMatchTlv = (tOfcMatchTlv *) kmalloc (OFC_MTU_SIZE, GFP_KERNEL);
+    if (pMatchTlv == NULL)
+    {
+        printk (KERN_CRIT "Failed to allocate memory to match "
+                          "fields\r\n");
+        return OFC_FAILURE;
+    }
+    
+    memset (pMatchTlv, 0, OFC_MTU_SIZE);
+    memset (aNullMacAddr, 0, sizeof(aNullMacAddr));
+
+    pMatchTlv->type = htons (OFPMT_OXM);
+    pOxmTlv = (tOfcMatchOxmTlv *) (void *) (((__u8 *) pMatchTlv) + 
+                                            sizeof(pMatchTlv->type) + 
+                                            sizeof(pMatchTlv->length));
+    oxmTlvLen = sizeof(pOxmTlv->Class) + sizeof(pOxmTlv->field) +
+                sizeof(pOxmTlv->length);
+    printk (KERN_INFO "oxmTlvLen: %u\r\n", oxmTlvLen);
+
+    /* TODO: Not supporting field mask option */
+    /* Add OXM match field TLVs */
+    if (memcmp (matchFields.aDstMacAddr, aNullMacAddr, 
+                OFC_MAC_ADDR_LEN))
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        pOxmTlv->field = OFCXMT_OFB_ETH_DST << 1;
+        pOxmTlv->length = OFC_MAC_ADDR_LEN;
+        memcpy (pOxmTlv->aValue, matchFields.aDstMacAddr, 
+                OFC_MAC_ADDR_LEN);
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (memcmp (matchFields.aSrcMacAddr, aNullMacAddr, 
+                OFC_MAC_ADDR_LEN))
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        pOxmTlv->field = OFCXMT_OFB_ETH_SRC << 1;
+        pOxmTlv->length = OFC_MAC_ADDR_LEN;
+        memcpy (pOxmTlv->aValue, matchFields.aSrcMacAddr, 
+                OFC_MAC_ADDR_LEN);
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (matchFields.vlanId != 0)
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        pOxmTlv->field = OFCXMT_OFB_VLAN_VID << 1;
+        pOxmTlv->length = sizeof (matchFields.vlanId);
+        twoByteField = htons (matchFields.vlanId);
+        memcpy (pOxmTlv->aValue, &twoByteField,
+                sizeof (matchFields.vlanId));
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (matchFields.etherType != 0)
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        pOxmTlv->field = OFCXMT_OFB_ETH_TYPE << 1;
+        pOxmTlv->length = sizeof (matchFields.etherType);
+        twoByteField = htons (matchFields.etherType);
+        memcpy (pOxmTlv->aValue, &twoByteField,
+                sizeof (matchFields.etherType));
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (matchFields.srcIpAddr != 0)
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        pOxmTlv->field = OFCXMT_OFB_IPV4_SRC << 1;
+        pOxmTlv->length = sizeof (matchFields.srcIpAddr);
+        fourByteField = htonl (matchFields.srcIpAddr);
+        memcpy (pOxmTlv->aValue, &fourByteField,
+                sizeof (matchFields.srcIpAddr));
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (matchFields.dstIpAddr != 0)
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        pOxmTlv->field = OFCXMT_OFB_IPV4_DST << 1;
+        pOxmTlv->length = sizeof (matchFields.dstIpAddr);
+        fourByteField = htonl (matchFields.dstIpAddr);
+        memcpy (pOxmTlv->aValue, &fourByteField,
+                sizeof (matchFields.dstIpAddr));
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (matchFields.protocolType != 0)
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        pOxmTlv->field = OFCXMT_OFB_IP_PROTO << 1;
+        pOxmTlv->length = sizeof (matchFields.protocolType);
+        memcpy (pOxmTlv->aValue, &matchFields.protocolType,
+                sizeof (matchFields.protocolType));
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (matchFields.srcPortNum != 0)
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        switch (matchFields.l4HeaderType)
+        {
+            case OFC_TCP_PROT_TYPE:
+                pOxmTlv->field = OFCXMT_OFB_TCP_SRC << 1;
+                break;
+
+            case OFC_UDP_PROT_TYPE:
+                pOxmTlv->field = OFCXMT_OFB_UDP_SRC << 1;
+                break;
+        }
+        pOxmTlv->length = sizeof (matchFields.srcPortNum);
+        twoByteField = htons (matchFields.srcPortNum);
+        memcpy (pOxmTlv->aValue, &twoByteField,
+                sizeof (matchFields.srcPortNum));
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (matchFields.dstPortNum != 0)
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        switch (matchFields.l4HeaderType)
+        {
+            case OFC_TCP_PROT_TYPE:
+                pOxmTlv->field = OFCXMT_OFB_TCP_DST << 1;
+                break;
+
+            case OFC_UDP_PROT_TYPE:
+                pOxmTlv->field = OFCXMT_OFB_UDP_DST << 1;
+                break;
+        }
+        pOxmTlv->length = sizeof (matchFields.dstPortNum);
+        twoByteField = htons (matchFields.dstPortNum);
+        memcpy (pOxmTlv->aValue, &twoByteField,
+                sizeof (matchFields.dstPortNum));
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    /* Add input port in match field TLV OXM fields */
+    pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+    pOxmTlv->field = OFCXMT_OFB_IN_PORT << 1;
+    pOxmTlv->length = sizeof (__u32);
+    fourByteField = inPort;
+    fourByteField = htonl (fourByteField);
+    memcpy (pOxmTlv->aValue, &fourByteField, sizeof(fourByteField));
+    matchTlvLen += oxmTlvLen + pOxmTlv->length;
+    pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+               (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+
+    matchTlvLen += sizeof (pMatchTlv->type) + 
+                   sizeof (pMatchTlv->length);
+    pMatchTlv->length = htons (matchTlvLen);
+
+    /* Add match padding bytes */
+    if (matchTlvLen % 8)
+    {
+        matchTlvLen = (matchTlvLen + 8) - (matchTlvLen % 8);
+    }
+
+    printk (KERN_INFO "Match TLV:\r\n");
+    OfcDumpPacket ((__u8 *) pMatchTlv, matchTlvLen);
+
+    /* Construct packet-in message */
+    pktInLen = sizeof (((tOfcPktInHdr *) 0)->bufId) +
+               sizeof (((tOfcPktInHdr *) 0)->totLength) +
+               sizeof (((tOfcPktInHdr *) 0)->reason) +
+               sizeof (((tOfcPktInHdr *) 0)->tableId) +
+               sizeof (((tOfcPktInHdr *) 0)->cookie);
+
+    pktInHdrLen = pktInLen + matchTlvLen + pktLen;
+    printk (KERN_INFO "matchTlvLen: %u\r\n", matchTlvLen);
+    printk (KERN_INFO "pktInLen: %u\r\n", pktInLen);
+    printk (KERN_INFO "pktLen: %u\r\n", pktLen);
+
+#if 0
+    /* Add padding if required */
+    if (pktInHdrLen % 8)
+    {
+        padBytes = 8 - (pktInHdrLen % 8);
+    }
+#endif
+    /* Add packet-in padding bytes */
+    padBytes += 2;
+    pktInHdrLen += padBytes;
+    printk (KERN_INFO "pktInHdrLen: %u\r\n", pktInHdrLen);
+
+    pPktInHdr = (tOfcPktInHdr *) kmalloc (pktInHdrLen, GFP_KERNEL);
+    if (pPktInHdr == NULL)
+    {
+        printk (KERN_CRIT "Failed to allocate memory to packet-in"
+                          " message\r\n");
+        kfree (pMatchTlv);
+        pMatchTlv = NULL;
+        return OFC_FAILURE;
+    }
+
+    memset (pPktInHdr, 0, pktInHdrLen);
+    pPktInHdr->bufId = htonl (OFC_NO_BUFFER);
+    pPktInHdr->totLength = htons (pktLen);
+    pPktInHdr->reason = msgType;
+    pPktInHdr->tableId = tableId;
+    pPktInHdr->cookie.lo = cookie.lo;
+    pPktInHdr->cookie.hi = cookie.hi;
+    memcpy (((__u8 *) pPktInHdr) + pktInLen, pMatchTlv, matchTlvLen);
+    memcpy (((__u8 *) pPktInHdr) + pktInLen + matchTlvLen + padBytes, 
+            pPkt, pktLen);
+
+    printk (KERN_INFO "Packet-In:\r\n");
+    OfcDumpPacket ((__u8 *) pPktInHdr, pktInHdrLen);
+
+    /* Add standard OpenFlow header */
+    OfcCpAddOpenFlowHdr ((__u8 *) pPktInHdr, pktInHdrLen,
+                         OFPT_PACKET_IN, 0, ppOpenFlowPkt);
+    
+    kfree (pPktInHdr);
+    pPktInHdr = NULL;
+    kfree (pMatchTlv);
+    pMatchTlv = NULL;
+    return OFC_SUCCESS;
 }
