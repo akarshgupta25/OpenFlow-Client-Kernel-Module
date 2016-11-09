@@ -419,6 +419,7 @@ void OfcDumpPacket (char *au1Packet, int len)
             printk (KERN_INFO "%x ", au1Packet[u4ByteCount]);
         }
     }
+    printk (KERN_INFO "\n");
     
     return;
 }
@@ -631,6 +632,8 @@ __u32 OfcDpRcvDataPktFromSock (__u8 dataIfNum, __u8 **ppPkt,
     {
         printk (KERN_CRIT "Failed to receive message from data " 
                           "socket!!\r\n");
+        kfree (pDataPkt);
+        pDataPkt = NULL;
         return OFC_FAILURE;
     }
 
@@ -677,6 +680,105 @@ int OfcDpSendDataPktOnSock (__u8 dataIfNum, __u8 *pPkt,
     if (msgLen == 0)
     {
         printk (KERN_CRIT "Failed to send message from data "
+                          "socket!!\r\n");
+        return OFC_FAILURE;
+    }
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpRecvCntrlPktOnSock
+*
+* Description: This function receives OpenFlow control packets
+*              on tcp socket from controller in control path task
+*
+* Input: None
+*
+* Output: ppPkt - Pointer to control packet
+*         pPktLen - Pointer to length of control packet
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpRecvCntrlPktOnSock (__u8 **ppPkt, __u32 *pPktLen)
+{
+    struct msghdr msg;
+    struct iovec  iov;
+    mm_segment_t  old_fs;
+    __u8          *pCntrlPkt = NULL;
+    int           msgLen = 0;
+
+    pCntrlPkt = (__u8 *) kmalloc (OFC_MTU_SIZE, GFP_KERNEL);
+    if (pCntrlPkt == NULL)
+    {
+        printk (KERN_CRIT "Failed to allocate memory to " 
+                          "control packet\r\n");
+        return OFC_FAILURE;
+    }
+    memset (&msg, 0, sizeof(msg));
+    memset (&iov, 0, sizeof(iov));
+    memset (pCntrlPkt, 0, OFC_MTU_SIZE);
+
+    iov.iov_base = pCntrlPkt;
+    iov.iov_len = OFC_MTU_SIZE;
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    old_fs = get_fs();
+    set_fs(KERNEL_DS);
+    msgLen = sock_recvmsg (gOfcCpGlobals.pCntrlSocket, &msg,
+                           OFC_MTU_SIZE, 0);
+    set_fs(old_fs);
+
+    if (msgLen == 0)
+    {
+        printk (KERN_CRIT "Failed to receive control packet\r\n");
+        kfree (pCntrlPkt);
+        pCntrlPkt = NULL;
+        return OFC_FAILURE;
+    }
+
+    *ppPkt = pCntrlPkt;
+    *pPktLen = msgLen;
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpSendCntrlPktFromSock
+*
+* Description: This function sends OpenFlow control packets
+*              on tcp socket to controller in control path task
+*
+* Input: pPkt - Pointer to control packet
+*        pktLen - Length of control packet
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpSendCntrlPktFromSock (__u8 *pPkt, __u32 pktLen)
+{
+    struct msghdr msg;
+    struct iovec  iov;
+    mm_segment_t  old_fs;
+    int           msgLen = 0;
+
+    memset (&msg, 0, sizeof(msg));
+    memset (&iov, 0, sizeof(iov));
+    iov.iov_base = pPkt;
+    iov.iov_len = pktLen;
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    old_fs = get_fs();
+    set_fs(KERNEL_DS);
+    msgLen = sock_sendmsg (gOfcCpGlobals.pCntrlSocket, &msg,
+                           pktLen);
+    set_fs(old_fs);
+
+    if (msgLen == 0)
+    {
+        printk (KERN_CRIT "Failed to send message from control "
                           "socket!!\r\n");
         return OFC_FAILURE;
     }
@@ -739,7 +841,8 @@ int OfcDpExtractPktHdrs (__u8 *pPkt, __u32 pktLen, __u8 inPort,
     __u16   vlanId = 0;
     __u8    ipHdrLen = 0;
 
-    pPktMatchFields->inPort = inPort;
+    /* Port n in switch corresponds to port n+1 for controller */
+    pPktMatchFields->inPort = inPort + 1;
 
     /* Extract destination MAC address */
     memcpy (pPktMatchFields->aDstMacAddr, pPkt, OFC_MAC_ADDR_LEN);

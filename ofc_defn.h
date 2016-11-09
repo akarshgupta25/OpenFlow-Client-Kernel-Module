@@ -50,8 +50,10 @@
 #define OFC_TCP_PROT_TYPE  0x06
 #define OFC_UDP_PROT_TYPE  0x11
 
-#define OFC_VERSION 0x04
+#define OFC_OPENFLOW_HDR_LEN    8
+#define OFC_VERSION             0x04
 #define OFC_INIT_TRANSACTION_ID 0x01
+#define OFC_NO_BUFFER           0xffffffff
 #define OFC_CTRL_MAIN_CONNECTION 0x0
 
 #endif /* __OFC_DEFN_H__ */
