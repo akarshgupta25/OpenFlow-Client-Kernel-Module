@@ -43,6 +43,7 @@ unsigned int OfcNetFilterPreRouteHook (const struct nf_hook_ops *ops,
     struct iphdr *iph = NULL;
     int          dataIfNum = 0;
 
+#if 0
     /* Check whether data packet has been received */
     for (dataIfNum = 0; dataIfNum < gNumOpenFlowIf; dataIfNum++)
     {
@@ -57,6 +58,7 @@ unsigned int OfcNetFilterPreRouteHook (const struct nf_hook_ops *ops,
             return NF_STOLEN;
         }
     }
+#endif
 
     /* Check whether control packet has been recevied  */
     if (gOfcCpGlobals.isModInit == OFC_TRUE)
@@ -136,6 +138,7 @@ static int __init OpenFlowClientStart (void)
         return OFC_FAILURE;
     }
 
+#if 0
     /* Spawn OpenFlow data path task */
     gOfcGlobals.pOfcDpThread = kthread_run (OfcDpMainTask, NULL, 
                                             OFC_DP_TASK_NAME);
@@ -146,12 +149,15 @@ static int __init OpenFlowClientStart (void)
         kthread_stop (gOfcGlobals.pOfcCpThread);
 	    return OFC_FAILURE;
     }
+#endif
     return OFC_SUCCESS;
 }
 
 static void __exit OpenFlowClientStop (void)
 {
+#if 0
     kthread_stop (gOfcGlobals.pOfcDpThread);
+#endif
     kthread_stop (gOfcGlobals.pOfcCpThread);
     sock_release(gOfcCpGlobals.pCntrlSocket);
     nf_unregister_hook (&gOfcGlobals.netFilterOps);

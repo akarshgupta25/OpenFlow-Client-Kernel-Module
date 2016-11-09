@@ -29,7 +29,7 @@ extern unsigned int gCntrlIpAddr;
 * Returns: OFC_SUCCESS/OFC_FAILURE
 *
 *******************************************************************/
-int OfcCpSendHelloPacket (__u8 xid)
+int OfcCpSendHelloPacket (__u32 xid)
 {
     __u8 *helloPkt = NULL;
 
@@ -81,7 +81,7 @@ int OfcCpMainInit (void)
 
     gOfcCpGlobals.isModInit = OFC_TRUE;
 
-    return OfcCpSendHelloPacket(OFC_INIT_TRANSACTION_ID);
+    return OfcCpSendHelloPacket(htonl(OFC_INIT_TRANSACTION_ID));
 }
 
 /******************************************************************                                                                          
@@ -218,6 +218,7 @@ int OfcCpRxControlPacket (void)
 
     /* Validate OpenFlow version */
     pOfHdr = (tOfcOfHdr *) ((void *) pCntrlPkt);
+    #if 0
     if (pOfHdr->version != OFC_VERSION)
     {
         printk (KERN_CRIT "OpenFlow version mismatch!!\r\n");
@@ -226,6 +227,7 @@ int OfcCpRxControlPacket (void)
         pCntrlPkt = NULL;
         return OFC_FAILURE;
     }
+    #endif
 
     /* Validate packet type */
     if (pOfHdr->type >= OFPT_MAX_PKT_TYPE)
@@ -376,7 +378,7 @@ int OfcCpAddOpenFlowHdr (__u8 *pPktHdr, __u16 pktHdrLen,
     pOfHdr->version = OFC_VERSION;
     pOfHdr->type = msgType;
     pOfHdr->length = htons (ofHdrLen);
-    pOfHdr->xid = htonl (xid);
+    pOfHdr->xid = xid;
 
     if (pPktHdr != NULL)
     {
