@@ -68,4 +68,16 @@ typedef struct
     tOfcMatchTlv  matchTlv;
 } tOfcPktInHdr;
 
+typedef struct
+{
+    __u8       impDatapathId[2];
+    __u8       macDatapathId[OFC_MAC_ADDR_LEN];
+    __u32      maxBuffers;
+    __u8       maxTables;
+    __u8       auxilaryId;
+    __u8       pad[2];
+    __u32      capabilities;
+    __u32      reserved;
+} tOfcCpFeatReply;
+
 #endif /* __OFC_PKT_H__ */

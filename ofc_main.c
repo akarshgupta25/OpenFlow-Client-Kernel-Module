@@ -146,7 +146,6 @@ static int __init OpenFlowClientStart (void)
         kthread_stop (gOfcGlobals.pOfcCpThread);
 	    return OFC_FAILURE;
     }
-
     return OFC_SUCCESS;
 }
 
@@ -154,6 +153,7 @@ static void __exit OpenFlowClientStop (void)
 {
     kthread_stop (gOfcGlobals.pOfcDpThread);
     kthread_stop (gOfcGlobals.pOfcCpThread);
+    sock_release(gOfcCpGlobals.pCntrlSocket);
     nf_unregister_hook (&gOfcGlobals.netFilterOps);
     printk (KERN_INFO "Openflow Client Stopped!!\r\n");
 }

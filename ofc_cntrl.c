@@ -13,6 +13,40 @@
 #include "ofc_hdrs.h"
 
 tOfcCpGlobals gOfcCpGlobals;
+extern unsigned int gCntrlIpAddr;
+
+/******************************************************************                                                                          
+* Function: OfcCpSendHelloPacket
+*
+* Description: This function is invoked to create the HELLO packet.
+*              It would invoke the OfcCpSendCntrlPktFromSock function 
+*              to send it out.
+*
+* Input: xid - Transaction ID.
+*
+* Output: Send the HELLO packet out.
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpSendHelloPacket (__u32 xid)
+{
+    __u8 *helloPkt = NULL;
+
+    if ((OfcCpAddOpenFlowHdr(NULL, 
+                        0, 
+                        OFPT_HELLO, 
+                        xid, 
+                        &helloPkt) != OFC_SUCCESS) || 
+        (OfcCpSendCntrlPktFromSock(helloPkt, 
+                                  sizeof(tOfcOfHdr)) != OFC_SUCCESS))
+    {
+        return OFC_FAILURE;
+    }
+
+    kfree(helloPkt);
+    return OFC_SUCCESS;
+}
 
 /******************************************************************                                                                          
 * Function: OfcCpMainInit
@@ -47,7 +81,7 @@ int OfcCpMainInit (void)
 
     gOfcCpGlobals.isModInit = OFC_TRUE;
 
-    return OFC_SUCCESS;
+    return OfcCpSendHelloPacket(htonl(OFC_INIT_TRANSACTION_ID));
 }
 
 /******************************************************************                                                                          
@@ -93,9 +127,67 @@ int OfcCpMainTask (void *args)
             }
         }
     }
-
     return OFC_SUCCESS;
 }
+
+/******************************************************************                                                                          
+* Function: OfcCpSendFeatureReply
+*
+* Description: This function is invoked to reply to FEATURE_REQUEST
+*              message from the controller.
+*
+* Input: cntrlPkt - The packet received from the controller.
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpSendFeatureReply (char *cntrlPkt)
+{
+    tOfcCpFeatReply *responseMsg = NULL;
+    struct net_device *dev = NULL;
+    __u8 *replyPkt = NULL;
+
+    responseMsg = kmalloc (sizeof(tOfcCpFeatReply), GFP_KERNEL);
+    if (!responseMsg)
+    {
+        printk (KERN_CRIT "Failed to allocate memory to Feature Request "
+                "Response packet\n");
+        return OFC_FAILURE;
+    }
+    memset(responseMsg, 0, sizeof(tOfcCpFeatReply));
+
+    dev = OfcGetNetDevByIp(gCntrlIpAddr);
+    if (!dev)
+    {
+        printk (KERN_CRIT "Failed to retrieve interface for "
+                "controller IP\n ");
+        return OFC_FAILURE;
+    }
+
+    memcpy(responseMsg->macDatapathId, dev->dev_addr, OFC_MAC_ADDR_LEN);
+    responseMsg->maxBuffers   = OFC_MAX_PKT_BUFFER;
+    responseMsg->maxTables    = OFC_MAX_FLOW_TABLES;
+    responseMsg->auxilaryId   = OFC_CTRL_MAIN_CONNECTION;
+    responseMsg->capabilities = htonl(OFPC_FLOW_STATS | OFPC_TABLE_STATS);
+
+    if ((OfcCpAddOpenFlowHdr((__u8 *)responseMsg, 
+                             sizeof(tOfcCpFeatReply),
+                             OFPT_FEATURES_REPLY, 
+                             ((tOfcOfHdr *)cntrlPkt)->xid, 
+                             &replyPkt) != OFC_SUCCESS) || 
+        (OfcCpSendCntrlPktFromSock(replyPkt, 
+                                   ntohs(((tOfcOfHdr *)replyPkt)->length)) != OFC_SUCCESS))
+    {
+        return OFC_FAILURE;
+    }
+
+    kfree(responseMsg);
+    kfree(replyPkt);
+    return OFC_SUCCESS;
+}
+
 
 /******************************************************************                                                                          
 * Function: OfcCpRxControlPacket
@@ -148,9 +240,7 @@ int OfcCpRxControlPacket (void)
     switch (pOfHdr->type)
     {
         case OFPT_HELLO:
-            /* Write function here for handling hello packet
-             * and inside the function send hello packet as
-             * reply */
+            OfcCpSendHelloPacket(pOfHdr->xid);
             break;
 
         case OFPT_ECHO_REQUEST:
@@ -160,9 +250,7 @@ int OfcCpRxControlPacket (void)
             break;
 
         case OFPT_FEATURES_REQUEST:
-            /* Write a function here for handling features
-             * request packet and inside the function send
-             * features reply packet */
+            OfcCpSendFeatureReply(pCntrlPkt);
             break;
 
         case OFPT_GET_CONFIG_REQUEST:
@@ -288,7 +376,7 @@ int OfcCpAddOpenFlowHdr (__u8 *pPktHdr, __u16 pktHdrLen,
     pOfHdr->version = OFC_VERSION;
     pOfHdr->type = msgType;
     pOfHdr->length = htons (ofHdrLen);
-    pOfHdr->xid = htonl (xid);
+    pOfHdr->xid = xid;
 
     if (pPktHdr != NULL)
     {
