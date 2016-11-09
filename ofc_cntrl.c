@@ -218,7 +218,6 @@ int OfcCpRxControlPacket (void)
 
     /* Validate OpenFlow version */
     pOfHdr = (tOfcOfHdr *) ((void *) pCntrlPkt);
-    #if 0
     if (pOfHdr->version != OFC_VERSION)
     {
         printk (KERN_CRIT "OpenFlow version mismatch!!\r\n");
@@ -227,7 +226,6 @@ int OfcCpRxControlPacket (void)
         pCntrlPkt = NULL;
         return OFC_FAILURE;
     }
-    #endif
 
     /* Validate packet type */
     if (pOfHdr->type >= OFPT_MAX_PKT_TYPE)
