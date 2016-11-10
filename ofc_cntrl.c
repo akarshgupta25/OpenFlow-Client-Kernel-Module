@@ -16,7 +16,7 @@ tOfcCpGlobals gOfcCpGlobals;
 extern unsigned int gCntrlIpAddr;
 
 /******************************************************************                                                                          
-* Function: OfcCpSendHelloPacket
+* Function: OfcCpSendHeader
 *
 * Description: This function is invoked to create the HELLO packet.
 *              It would invoke the OfcCpSendCntrlPktFromSock function 
@@ -29,13 +29,13 @@ extern unsigned int gCntrlIpAddr;
 * Returns: OFC_SUCCESS/OFC_FAILURE
 *
 *******************************************************************/
-int OfcCpSendHelloPacket (__u32 xid)
+int OfcCpSendHeader (__u8 type, __u32 xid)
 {
     __u8 *helloPkt = NULL;
 
     if ((OfcCpAddOpenFlowHdr(NULL, 
                         0, 
-                        OFPT_HELLO, 
+                        type, 
                         xid, 
                         &helloPkt) != OFC_SUCCESS) || 
         (OfcCpSendCntrlPktFromSock(helloPkt, 
@@ -81,7 +81,7 @@ int OfcCpMainInit (void)
 
     gOfcCpGlobals.isModInit = OFC_TRUE;
 
-    return OfcCpSendHelloPacket(htonl(OFC_INIT_TRANSACTION_ID));
+    return OfcCpSendHeader(OFPT_HELLO, htonl(OFC_INIT_TRANSACTION_ID));
 }
 
 /******************************************************************                                                                          
@@ -240,7 +240,7 @@ int OfcCpRxControlPacket (void)
     switch (pOfHdr->type)
     {
         case OFPT_HELLO:
-            OfcCpSendHelloPacket(pOfHdr->xid);
+            OfcCpSendHeader(OFPT_HELLO, pOfHdr->xid);
             break;
 
         case OFPT_ECHO_REQUEST:
@@ -275,6 +275,7 @@ int OfcCpRxControlPacket (void)
             break;
 
         case OFPT_BARRIER_REQUEST:
+            OfcCpSendHeader(OFPT_BARRIER_REPLY, pOfHdr->xid);
             break;
 
         default:
