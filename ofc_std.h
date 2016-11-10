@@ -157,4 +157,25 @@ enum
     OFPT_MAX_PKT_TYPE
 };
 
+enum 
+{
+    OFPFC_ADD,
+    OFPFC_MODIFY,
+    OFPFC_MODIFY_STRICT,
+    OFPFC_DELETE,
+    OFPFC_DELETE_STRICT,
+    OFPFC_GET
+};
+
+enum
+{
+    OFPC_FLOW_STATS   = 1 << 0,
+    OFPC_TABLE_STATS  = 1 << 1,
+    OFPC_PORT_STATS   = 1 << 2,
+    OFPC_GROUP_STATS  = 1 << 3,
+    OFPC_IP_REASM     = 1 << 5,
+    OFPC_QUEUE_STATS  = 1 << 6,
+    OFPC_PORT_BLOCKED = 1 << 8 
+};
+
 #endif /* __OFC_STD_H__ */

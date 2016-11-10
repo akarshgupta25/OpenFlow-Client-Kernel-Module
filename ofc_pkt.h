@@ -18,25 +18,6 @@ typedef struct
 
 typedef struct
 {
-    tOfcEightByte datapathId;
-    __u32         numBuffers;
-    __u8          numTables;
-    __u8          auxId;
-    __u8          aPad[2];
-    __u32         flowStats:1;
-    __u32         tableStats:1;
-    __u32         portStats:1;
-    __u32         grpStats:1;
-    __u32         notSupp1:1;
-    __u32         ipReasm:1;
-    __u32         queueStats:1;
-    __u32         notSupp2:1;
-    __u32         portBlocked:1;
-    __u32         reserved;
-} tOfcFeatRply;
-
-typedef struct
-{
     __u8    version; 
     __u8    type;
     __u16   length;
@@ -67,5 +48,47 @@ typedef struct
     tOfcEightByte cookie;
     tOfcMatchTlv  matchTlv;
 } tOfcPktInHdr;
+
+typedef struct
+{
+    __u16  type;
+    __u16  length;
+} tOfcInstrTlv;
+
+typedef struct
+{
+    __u16  type;
+    __u16  length;
+} tOfcActionTlv;
+
+typedef struct
+{
+     __u8       impDatapathId[2];
+     __u8       macDatapathId[OFC_MAC_ADDR_LEN];
+     __u32      maxBuffers;
+     __u8       maxTables;
+     __u8       auxilaryId;
+     __u8       pad[2];
+     __u32      capabilities;
+     __u32      reserved;
+} tOfcFeatReply;
+
+typedef struct 
+{
+    tOfcEightByte cookie;
+    tOfcEightByte cookieMask;
+    __u8          tableId;
+    __u8          command;
+    __u16         idleTimeout;
+    __u16         hardTimeout;
+    __u16         priority;
+    __u32         bufId;
+    __u32         outPort;
+    __u32         outGrp;
+    __u16         flags;
+    __u8          aPad[2];
+    tOfcMatchTlv  OfpMatch;
+    tOfcInstrTlv  OfpInstr[0];
+} tOfcFlowModHdr;
 
 #endif /* __OFC_PKT_H__ */

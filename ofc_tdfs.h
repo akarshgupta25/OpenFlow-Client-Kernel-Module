@@ -50,11 +50,13 @@ typedef struct
 {
     struct socket    *pCntrlSocket;
     struct semaphore semId;
+    struct semaphore cntrlPktSemId;
     struct semaphore dpMsgQSemId;
     struct list_head dpMsgListHead; /* Queue for messages rx from
                                      * data path sub module */
     int              events;
     int              isModInit;
+    __u32            numCntrlPktInQ;
 } tOfcCpGlobals;
 
 #if 0
@@ -129,7 +131,16 @@ typedef struct
 typedef struct
 {
     struct list_head list;
-    __u8             instrType;
+    __u8             field;
+    __u8             length;
+    /* TODO: Masks not supported */
+    __u8             aValue[16];
+} tMatchListEntry;
+
+typedef struct
+{
+    struct list_head list;
+    __u16            instrType;
     union
     {
        __u8             tableId;
@@ -155,11 +166,19 @@ typedef struct
     __u32            outPort;
 } tOfcOutPortList;
 
+enum
+{
+    OFC_FLOW_MOD_ADD = 0,
+    OFC_FLOW_MOD_DEL,
+    OFC_PACKET_OUT
+};
+
 /* Function Declarations */
 int OfcDpReceiveEvent (int events, int *pRxEvents);
 int OfcDpSendEvent (int events);
 void OfcDumpPacket (char *au1Packet, int len);
 struct net_device *OfcGetNetDevByName (char *pIfName);
+struct net_device *OfcGetNetDevByIp (unsigned int ipAddr);
 int OfcConvertStringToIp (char *pString, unsigned int *pIpAddr);
 
 int OfcDpMainTask (void *args);
@@ -188,24 +207,42 @@ tOfcFlowEntry *OfcDpGetBestMatchFlow (tOfcMatchFields pktMatchFields,
                                       __u8 *pIsTableMiss);
 int OfcDpExtractPktHdrs (__u8 *pPkt, __u32 pktLen, __u8 inPort,
                          tOfcMatchFields *pPktMatchFields);
+int OfcDpRxControlPathMsg (void);
+int OfcDpInsertFlowEntry (tOfcFlowEntry *pFlowEntry);
+int OfcDpDeleteFlowEntry (tOfcFlowEntry *pFlowEntry);
 
 int OfcCpMainTask (void *args);
 int OfcCpReceiveEvent (int events, int *pRxEvents);
 int OfcCpSendEvent (int events);
 int OfcCpCreateCntrlSocket (void);
 int OfcCpRxControlPacket (void);
-int OfcCpSendToDpQ (__u8 *pPkt, __u32 pktLen);
+int OfcCpSendToDpQ (tDpCpMsgQ *pMsgParam);
 tDpCpMsgQ *OfcCpRecvFromDpMsgQ (void);
+int OfcCpSendToCntrlPktQ (void);
+__u32 OfcCpRecvFromCntrlPktQ (void);
 int OfcCpRecvCntrlPktOnSock (__u8 **ppPkt, __u32 *pPktLen);
 int OfcCpSendCntrlPktFromSock (__u8 *pPkt, __u32 pktLen);
 void OfcCpRxDataPathMsg (void);
 int OfcCpAddOpenFlowHdr (__u8 *pPktHdr, __u16 pktHdrLen,
                          __u8 msgType, __u32 xid,
                          __u8 **ppOfPkt);
+int OfcCpSendHelloPacket (__u32 xid);
+int OfcCpSendFeatureReply (__u8 *pCntrlPkt);
 int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
                             __u8 msgType, __u8 tableId,
                             tOfcEightByte cookie,
                             tOfcMatchFields matchFields,
                             __u8 **ppOpenFlowPkt);
+int OfcCpProcessFlowMod (__u8 *pPkt, __u32 pktLen);
+tOfcFlowEntry *OfcCpExtractFlow (tOfcFlowModHdr *pFlowMod,
+                                 __u16 flowModLen);
+int OfcCpAddMatchFieldsInFlow (tOfcFlowModHdr *pFlowMod, __u16 flowModLen,
+                               tOfcFlowEntry *pFlowEntry);
+int OfcCpAddInstrListInFlow (tOfcFlowModHdr *pFlowMod,
+                             __u16 flowModLen,
+                             tOfcFlowEntry *pFlowEntry);
+int OfcCpAddActionListToInstr (tOfcActionTlv *pActionTlv,
+                               __u16 actionTlvLen,
+                               tOfcInstrList *pInstrList);
 
 #endif /* __OFC_TDFS_H__ */

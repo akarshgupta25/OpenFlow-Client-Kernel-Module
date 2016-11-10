@@ -268,7 +268,7 @@ int OfcDpSendToCpQ (tDpCpMsgQ *pMsgParam)
 * Returns: OFC_SUCCESS/OFC_FAILURE
 *
 *******************************************************************/
-int OfcCpSendToDpQ (__u8 *pPkt, __u32 pktLen)
+int OfcCpSendToDpQ (tDpCpMsgQ *pMsgParam)
 {
     tDpCpMsgQ *pMsgQ = NULL;
 
@@ -283,8 +283,8 @@ int OfcCpSendToDpQ (__u8 *pPkt, __u32 pktLen)
     down_interruptible (&gOfcDpGlobals.cpMsgQSemId);
 
     memset (pMsgQ, 0, sizeof(tDpCpMsgQ));
+    memcpy (pMsgQ, pMsgParam, sizeof (tDpCpMsgQ));
     INIT_LIST_HEAD (&pMsgQ->list);
-    pMsgQ->pPkt = pPkt;
     list_add_tail (&pMsgQ->list, &gOfcDpGlobals.cpMsgListHead);
 
     up (&gOfcDpGlobals.cpMsgQSemId);
@@ -322,6 +322,57 @@ tDpCpMsgQ *OfcCpRecvFromDpMsgQ (void)
 }
 
 /******************************************************************                                                                          
+* Function: OfcCpSendToCntrlPktQ
+*
+* Description: This function increments the number of control
+*              packets present in control packet queue of
+*              control path task socket queue
+*
+* Input: pPkt - None
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpSendToCntrlPktQ (void)
+{
+    down_interruptible (&gOfcCpGlobals.cntrlPktSemId);
+    gOfcCpGlobals.numCntrlPktInQ++;
+    up (&gOfcCpGlobals.cntrlPktSemId);
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpRecvFromCntrlPktQ
+*
+* Description: This function decrements the number of control
+*              packets present in control packet queue of
+*              control path task socket queue
+*
+* Input: pPkt - None
+*
+* Output: None
+*
+* Returns: Number of control packets in queue
+*
+*******************************************************************/
+__u32 OfcCpRecvFromCntrlPktQ (void)
+{
+    __u32 retVal = 0;
+
+    if (gOfcCpGlobals.numCntrlPktInQ != 0)
+    {
+        retVal = gOfcCpGlobals.numCntrlPktInQ;
+        (gOfcCpGlobals.numCntrlPktInQ)--;
+        return retVal;
+    }
+
+    return gOfcCpGlobals.numCntrlPktInQ;
+}
+
+/******************************************************************                                                                          
 * Function: OfcGetNetDevByName
 *
 * Description: This function returns the net device pointer
@@ -346,6 +397,43 @@ struct net_device *OfcGetNetDevByName (char *pIfName)
             printk (KERN_INFO "Device found\r\n");
             return pTempDev;
         }
+        pTempDev = next_net_device (pTempDev);
+    }
+
+    return NULL;
+}
+
+/******************************************************************                                                                          
+* Function: OfcGetNetDevByIp
+*
+* Description: This function returns the net device pointer
+*              corresponding to the ip address massed.
+*
+* Input: ipAddr - IP address that belongs in the subnet of the net
+*                 device.
+*
+* Output: None
+*
+* Returns: Pointer to network device
+*
+*******************************************************************/
+struct net_device *OfcGetNetDevByIp (unsigned int ipAddr)
+{
+    struct net_device *pTempDev = NULL;
+
+    pTempDev = first_net_device (&init_net);
+    while (pTempDev)
+    {
+        for_ifa(pTempDev->ip_ptr) 
+        {
+            if ((ifa->ifa_mask & ifa->ifa_address) == 
+                (ifa->ifa_mask & htonl(ipAddr)))
+            {
+                printk(KERN_INFO "Device Found with the Ip Specified\r\n");
+                return pTempDev;
+            }
+        }
+        endfor_ifa(indev)
         pTempDev = next_net_device (pTempDev);
     }
 
@@ -548,6 +636,10 @@ int OfcCpCreateCntrlSocket (void)
     }
 
     gOfcCpGlobals.pCntrlSocket = socket;
+
+    /* Send Hello packet to controller */
+    OfcCpSendHelloPacket (htonl (OFC_INIT_TRANSACTION_ID));
+
     return OFC_SUCCESS;
 }
 
@@ -696,7 +788,7 @@ int OfcCpRecvCntrlPktOnSock (__u8 **ppPkt, __u32 *pPktLen)
                            OFC_MTU_SIZE, 0);
     set_fs(old_fs);
 
-    if (msgLen == 0)
+    if (msgLen < OFC_OPENFLOW_HDR_LEN)
     {
         printk (KERN_CRIT "Failed to receive control packet\r\n");
         kfree (pCntrlPkt);

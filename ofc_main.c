@@ -65,6 +65,7 @@ unsigned int OfcNetFilterPreRouteHook (const struct nf_hook_ops *ops,
         if ((iph != NULL) && 
             (gCntrlIpAddr == (ntohl (iph->saddr))))
         {
+            OfcCpSendToCntrlPktQ();
             OfcCpSendEvent (OFC_CTRL_PKT_EVENT);
         }
     }
@@ -83,21 +84,6 @@ static int OfcMainInit (void)
 
     return OFC_SUCCESS;
 }
-
-#if 0
-static int OfcMainTask (void *args)
-{
-                memset (&msg, 0, sizeof(msg));
-                memset (&iov, 0, sizeof(iov));
-                iov.iov_base = buffer;
-                iov.iov_len = msgLen;
-                msg.msg_iov = &iov;
-                msg.msg_iovlen = 1;
-                msgLen = sock_sendmsg (socket2, &msg, msgLen);
-                set_fs(old_fs);
-                printk (KERN_INFO "Packet Tx on socket (len:%d)\r\n", msgLen);
-}
-#endif
 
 static int __init OpenFlowClientStart (void)
 {
@@ -152,7 +138,9 @@ static int __init OpenFlowClientStart (void)
 
 static void __exit OpenFlowClientStop (void)
 {
+    /* TODO: Release all data sockets */
     kthread_stop (gOfcGlobals.pOfcDpThread);
+    sock_release (gOfcCpGlobals.pCntrlSocket);
     kthread_stop (gOfcGlobals.pOfcCpThread);
     nf_unregister_hook (&gOfcGlobals.netFilterOps);
     printk (KERN_INFO "Openflow Client Stopped!!\r\n");

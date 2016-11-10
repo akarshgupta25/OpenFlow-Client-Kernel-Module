@@ -98,6 +98,7 @@ int OfcDpMainTask (void *args)
             if (event & OFC_CP_TO_DP_EVENT)
             {
                 /* Process information sent by control path task */
+                OfcDpRxControlPathMsg();
             }
         }
     }
@@ -145,6 +146,77 @@ int OfcDpRxDataPacket (void)
     }
 
     up (&gOfcDpGlobals.dataPktQSemId);
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcDpRxDataPacket
+*
+* Description: This function receives data packet from OpenFlow
+*              interfaces via raw socket
+*
+* Input: None
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDpRxControlPathMsg (void)
+{
+    tDpCpMsgQ      *pMsgQ = NULL;
+    tOfcFlowEntry  *pFlowEntry = NULL;
+
+    down_interruptible (&gOfcDpGlobals.cpMsgQSemId);
+
+    while ((pMsgQ = OfcDpRecvFromCpMsgQ()) != NULL)
+    {
+        switch (pMsgQ->msgType)
+        {
+            case OFC_FLOW_MOD_ADD:
+                pFlowEntry = pMsgQ->pFlowEntry;
+                if (pFlowEntry == NULL)
+                {
+                    printk (KERN_CRIT "Data path did not receive flow " 
+                                      "entry from control path\r\n");
+                    kfree (pMsgQ);
+                    pMsgQ = NULL;
+                    continue;
+                }
+
+                OfcDpInsertFlowEntry (pFlowEntry);
+                break;
+
+            case OFC_FLOW_MOD_DEL:
+                pFlowEntry = pMsgQ->pFlowEntry;
+                if (pFlowEntry == NULL)
+                {   
+                    printk (KERN_CRIT "Data path did not receive flow "
+                                      "entry from control path\r\n");
+                    kfree (pMsgQ);
+                    pMsgQ = NULL;
+                    continue;
+                }
+
+                OfcDpDeleteFlowEntry (pFlowEntry);
+                break;
+
+            case OFC_PACKET_OUT:
+                break;
+
+            default:
+                printk (KERN_CRIT "Invalid message received from "
+                                  "control path task\r\n");
+                break;
+        }
+
+        /* Release message */
+        kfree (pMsgQ);
+        pMsgQ = NULL;
+    }
+
+    up (&gOfcDpGlobals.cpMsgQSemId);
 
     return OFC_SUCCESS;
 }
@@ -507,6 +579,12 @@ tOfcFlowEntry *OfcDpGetBestMatchFlow (tOfcMatchFields pktMatchFields,
 
         if (pFlowEntry->matchFields.srcPortNum != 0)
         {
+            /* Check for L4 protocol type */
+            if (pFlowEntry->matchFields.l4HeaderType != 
+                pktMatchFields.protocolType)
+            {
+                continue;
+            }
             /* Match L4 source port number */
             if (pFlowEntry->matchFields.srcPortNum !=
                 pktMatchFields.srcPortNum)
@@ -517,6 +595,12 @@ tOfcFlowEntry *OfcDpGetBestMatchFlow (tOfcMatchFields pktMatchFields,
 
         if (pFlowEntry->matchFields.dstPortNum != 0)
         {
+            /* Check for L4 protocol type */
+            if (pFlowEntry->matchFields.l4HeaderType != 
+                pktMatchFields.protocolType)
+            {
+                continue;
+            }
             /* Match L4 destination port number */
             if (pFlowEntry->matchFields.dstPortNum !=
                 pktMatchFields.dstPortNum)
@@ -648,6 +732,109 @@ int OfcDpApplyInstrActions (__u8 *pPkt, __u32 pktLen, __u8 inPort,
                 printk (KERN_CRIT "Unsupported action!!\r\n");
                 return OFC_FAILURE;
         }
+    }
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcDpInsertFlowEntry
+*
+* Description: This function inserts flow entry in flow table
+*
+* Input: pFlowEntry - Pointer to flow entry
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDpInsertFlowEntry (tOfcFlowEntry *pFlowEntry)
+{
+    tOfcFlowTable     *pFlowTable = NULL;
+    tOfcFlowEntry     *pFlowEntryParser = NULL;
+    struct list_head  *pList = NULL;
+    __u8              tableId = 0;
+
+    tableId = pFlowEntry->tableId;
+    pFlowTable = OfcDpGetFlowTableEntry (tableId);
+    if (pFlowTable == NULL)
+    {
+        printk (KERN_CRIT "Invalid flow table Id in flow entry\r\n");
+        kfree (pFlowEntry);
+        pFlowEntry = NULL;
+        return OFC_FAILURE;
+    }
+
+    /* Entries are inserted in decreasing order of priorities i.e.
+     * flow entries with greater priorities are inserted ahead of
+     * flow entries with lower priorities. If two flows have
+     * equal priority then the new flow is inserted ahead of the
+     * older flow */
+    list_for_each (pList, &pFlowTable->flowEntryList)
+    {
+        pFlowEntryParser = (tOfcFlowEntry *) pList;
+
+        if (pFlowEntry->priority < pFlowEntryParser->priority)
+        {
+            continue;
+        }
+
+        /* Insert new flow before this flow entry */
+        INIT_LIST_HEAD (&pFlowEntry->list);
+        list_add_tail (&pFlowEntry->list, &pFlowEntryParser->list);
+        break;
+    }
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcDpDeleteFlowEntry
+*
+* Description: This function deletes flow entry from flow table
+*
+* Input: pFlowEntry - Pointer to flow entry
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDpDeleteFlowEntry (tOfcFlowEntry *pFlowEntry)
+{
+    tOfcFlowTable     *pFlowTable = NULL;
+    tOfcFlowEntry     *pFlowEntryParser = NULL;
+    struct list_head  *pList = NULL;
+    __u8              tableId = 0;
+
+    tableId = pFlowEntry->tableId;
+    pFlowTable = OfcDpGetFlowTableEntry (tableId);
+    if (pFlowTable == NULL)
+    {
+        printk (KERN_CRIT "Invalid flow table Id in flow entry\r\n");
+        kfree (pFlowEntry);
+        pFlowEntry = NULL;
+        return OFC_FAILURE;
+    }
+
+    list_for_each (pList, &pFlowTable->flowEntryList)
+    {
+        pFlowEntryParser = (tOfcFlowEntry *) pList;
+
+        if (memcmp (pFlowEntry, pFlowEntryParser, 
+                    sizeof (tOfcFlowEntry)))
+        {
+            continue;
+        }
+
+        /* Flow entry found, delete it */
+        list_del_init (pList);
+        kfree (pFlowEntryParser);
+        pFlowEntryParser = NULL;
+        kfree (pFlowEntry);
+        pFlowEntry = NULL;
+        break;
     }
 
     return OFC_SUCCESS;

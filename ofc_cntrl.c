@@ -13,6 +13,7 @@
 #include "ofc_hdrs.h"
 
 tOfcCpGlobals gOfcCpGlobals;
+extern unsigned int gCntrlIpAddr;
 
 /******************************************************************                                                                          
 * Function: OfcCpMainInit
@@ -33,6 +34,7 @@ int OfcCpMainInit (void)
 
     /* Initialize semaphore */
     sema_init (&gOfcCpGlobals.semId, 1);
+    sema_init (&gOfcCpGlobals.cntrlPktSemId, 1);
     sema_init (&gOfcCpGlobals.dpMsgQSemId, 1);
 
     /* Initialize queues */
@@ -115,13 +117,25 @@ int OfcCpRxControlPacket (void)
     tOfcOfHdr  *pOfHdr = NULL;
     __u8       *pCntrlPkt = NULL;
     __u32      pktLen = 0;
+    __u32      numCntrlPktsInQ = 0;
+
+    down_interruptible (&gOfcCpGlobals.cntrlPktSemId);
+
+    while ((numCntrlPktsInQ = OfcCpRecvFromCntrlPktQ()) != 0)
+    {
+    printk (KERN_INFO "Before socket receive\r\n"); 
 
     if (OfcCpRecvCntrlPktOnSock (&pCntrlPkt, &pktLen) 
         != OFC_SUCCESS)
     {
+        continue;
         return OFC_FAILURE;
     }
 
+    if (pCntrlPkt == NULL)
+    {
+        continue;
+    }
     printk (KERN_INFO "Control packet received\r\n"); 
 
     /* Validate OpenFlow version */
@@ -132,7 +146,10 @@ int OfcCpRxControlPacket (void)
         /* TODO: Send error message and handle for higher versions */
         kfree (pCntrlPkt);
         pCntrlPkt = NULL;
+        continue;
+#if 0
         return OFC_FAILURE;
+#endif
     }
 
     /* Validate packet type */
@@ -142,15 +159,16 @@ int OfcCpRxControlPacket (void)
         /* TODO: Send error message */
         kfree (pCntrlPkt);
         pCntrlPkt = NULL;
+        continue;
+#if 0
         return OFC_FAILURE;
+#endif
     }
 
     switch (pOfHdr->type)
     {
         case OFPT_HELLO:
-            /* Write function here for handling hello packet
-             * and inside the function send hello packet as
-             * reply */
+            OfcCpSendHelloPacket (pOfHdr->xid);
             break;
 
         case OFPT_ECHO_REQUEST:
@@ -160,9 +178,7 @@ int OfcCpRxControlPacket (void)
             break;
 
         case OFPT_FEATURES_REQUEST:
-            /* Write a function here for handling features
-             * request packet and inside the function send
-             * features reply packet */
+            OfcCpSendFeatureReply (pCntrlPkt);
             break;
 
         case OFPT_GET_CONFIG_REQUEST:
@@ -175,6 +191,7 @@ int OfcCpRxControlPacket (void)
             break;
 
         case OFPT_FLOW_MOD:
+            OfcCpProcessFlowMod (pCntrlPkt, pktLen);
             break;
 
         case OFPT_PORT_MOD:
@@ -190,12 +207,21 @@ int OfcCpRxControlPacket (void)
             break;
 
         default:
-            printk (KERN_CRIT "Action not currently supported\r\n");
+            printk (KERN_CRIT "Packet not currently supported\r\n");
             break; 
     }
 
+    /* Released processed control packet */
     kfree (pCntrlPkt);
     pCntrlPkt = NULL;
+    }
+
+    up (&gOfcCpGlobals.cntrlPktSemId);
+
+#if 0
+    kfree (pCntrlPkt);
+    pCntrlPkt = NULL;
+#endif
     return OFC_SUCCESS;
 }
 
@@ -288,7 +314,9 @@ int OfcCpAddOpenFlowHdr (__u8 *pPktHdr, __u16 pktHdrLen,
     pOfHdr->version = OFC_VERSION;
     pOfHdr->type = msgType;
     pOfHdr->length = htons (ofHdrLen);
-    pOfHdr->xid = htonl (xid);
+    /* xid same as that of controller, hence already in 
+     * network byte order */
+    pOfHdr->xid = xid; 
 
     if (pPktHdr != NULL)
     {
@@ -300,6 +328,130 @@ int OfcCpAddOpenFlowHdr (__u8 *pPktHdr, __u16 pktHdrLen,
     return OFC_SUCCESS;
 }
 
+/******************************************************************                                                                          
+* Function: OfcCpSendHelloPacket
+*
+* Description: This function is invoked to create the HELLO packet.
+*              It would invoke the OfcCpSendCntrlPktFromSock 
+*              function to send it out to controller
+*
+* Input: xid - Transaction ID.
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpSendHelloPacket (__u32 xid)
+{
+    __u8  *pHelloPkt = NULL;
+
+    if (OfcCpAddOpenFlowHdr (NULL, 0, OFPT_HELLO, xid, &pHelloPkt) 
+        != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "Failed to construct Hello packet\r\n");
+        return OFC_FAILURE;
+    }
+
+    if (OfcCpSendCntrlPktFromSock (pHelloPkt, OFC_OPENFLOW_HDR_LEN)
+        != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "Failed to send Hello packet\r\n");
+        kfree(pHelloPkt);
+        pHelloPkt = NULL;
+        return OFC_FAILURE;
+    }
+
+    kfree(pHelloPkt);
+    pHelloPkt = NULL;
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpSendFeatureReply
+*
+* Description: This function is invoked to reply to FEATURE_REQUEST
+*              message from the controller.
+*
+* Input: pCntrlPkt - The packet received from the controller.
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpSendFeatureReply (__u8 *pCntrlPkt)
+{
+    tOfcFeatReply     *pResponseMsg = NULL;
+    struct net_device *dev = NULL;
+    __u8              *pOpenFlowPkt = NULL;
+    __u16             featReplyLen = 0;
+
+    pResponseMsg = (tOfcFeatReply *) kmalloc (sizeof(tOfcFeatReply),
+                                              GFP_KERNEL);
+    if (!pResponseMsg)
+    {
+        printk (KERN_CRIT "Failed to allocate memory to Feature "
+                          "Response packet\r\n");
+        return OFC_FAILURE;
+    }
+
+    dev = OfcGetNetDevByIp (gCntrlIpAddr);
+    if (!dev)
+    {
+        printk (KERN_CRIT "Failed to retrieve interface for "
+                          "controller IP\r\n");
+        kfree (pResponseMsg);
+        pResponseMsg = NULL;
+        return OFC_FAILURE;
+    }
+
+    memset (pResponseMsg, 0, sizeof (tOfcFeatReply));
+    memcpy (pResponseMsg->macDatapathId, dev->dev_addr, 
+            OFC_MAC_ADDR_LEN);
+    pResponseMsg->maxBuffers = htonl (OFC_MAX_PKT_BUFFER);
+    pResponseMsg->maxTables  = OFC_MAX_FLOW_TABLES;
+    pResponseMsg->auxilaryId = OFC_CTRL_MAIN_CONNECTION;
+    pResponseMsg->capabilities = 
+        htonl (OFPC_FLOW_STATS | OFPC_TABLE_STATS);
+
+    featReplyLen = sizeof (pResponseMsg->impDatapathId) +
+                   sizeof (pResponseMsg->macDatapathId) +
+                   sizeof (pResponseMsg->maxBuffers) +
+                   sizeof (pResponseMsg->maxTables) +
+                   sizeof (pResponseMsg->auxilaryId) +
+                   sizeof (pResponseMsg->pad) +
+                   sizeof (pResponseMsg->capabilities) +
+                   sizeof (pResponseMsg->reserved);
+
+    if (OfcCpAddOpenFlowHdr ((__u8 *) pResponseMsg, featReplyLen,
+        OFPT_FEATURES_REPLY, ((tOfcOfHdr *) pCntrlPkt)->xid, 
+        &pOpenFlowPkt) != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "Failed to add OpenFlow header in "
+                          "Feature Reply message\r\n");
+        kfree (pResponseMsg);
+        pResponseMsg = NULL;
+        return OFC_FAILURE;
+    }
+
+    if (OfcCpSendCntrlPktFromSock (pOpenFlowPkt, 
+        ntohs (((tOfcOfHdr *) pOpenFlowPkt)->length)) != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "Failed to send Feature Reply message\r\n");
+        kfree (pResponseMsg);
+        pResponseMsg = NULL;
+        kfree (pOpenFlowPkt);
+        pOpenFlowPkt = NULL;
+        return OFC_FAILURE;
+    }
+
+    kfree(pResponseMsg);
+    pResponseMsg = NULL;
+    kfree(pOpenFlowPkt);
+    pOpenFlowPkt = NULL;
+    return OFC_SUCCESS;
+}
 
 /******************************************************************                                                                          
 * Function: OfcCpConstructPacketIn
@@ -568,5 +720,504 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
     pPktInHdr = NULL;
     kfree (pMatchTlv);
     pMatchTlv = NULL;
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpProcessFlowMod
+*
+* Description: This function processes flow mod messages received
+*              from the controller and installs or deletes flows
+*              in the flow table
+*
+* Input: pPkt - Pointer to control packet
+*        pktLen - Length of control packet
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpProcessFlowMod (__u8 *pPkt, __u32 pktLen)
+{
+    tOfcFlowModHdr  *pFlowMod = NULL;
+    tOfcFlowEntry   *pFlowEntry = NULL;
+    tDpCpMsgQ       msgQ;
+    __u16           flowModLen = 0;
+ 
+    pFlowMod =
+        (tOfcFlowModHdr *) (void *) (pPkt + OFC_OPENFLOW_HDR_LEN);
+    flowModLen = pktLen - OFC_OPENFLOW_HDR_LEN;
+
+    switch (pFlowMod->command)
+    {
+        case OFPFC_ADD:
+        /* Intentional fall through */
+        case OFPFC_DELETE:
+            pFlowEntry = OfcCpExtractFlow (pFlowMod, flowModLen);
+            if (pFlowEntry == NULL)
+            {
+                printk (KERN_CRIT "Failed to extract flow from Flow"
+                                  " Mod message\r\n");
+                return OFC_FAILURE;
+            }
+            break;
+
+        default:
+            printk (KERN_CRIT "Flow Mod command not supported!!\r\n");
+            return OFC_FAILURE;
+    }
+
+    /* Send the extracted flow to data path task for insertion or
+     * deletion in flow table */
+    memset (&msgQ, 0, sizeof (msgQ));
+    msgQ.pFlowEntry = pFlowEntry;
+    msgQ.msgType = (pFlowMod->command == OFPFC_ADD) ? 
+                    OFC_FLOW_MOD_ADD : OFC_FLOW_MOD_DEL;
+    OfcCpSendToDpQ (&msgQ);
+    OfcDpSendEvent (OFC_CP_TO_DP_EVENT);
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpExtractFlow
+*
+* Description: This function extracts a flow entry from Flow Mod
+*              message
+*
+* Input: pFlowMod - Pointer to flow mod header
+*        flowModLen - Length of flow mod packet
+*
+* Output: None
+*
+* Returns: Pointer to flow entry
+*
+*******************************************************************/
+tOfcFlowEntry *OfcCpExtractFlow (tOfcFlowModHdr *pFlowMod,
+                                 __u16 flowModLen)
+{
+    tOfcFlowEntry    *pFlowEntry = NULL;
+
+    pFlowEntry = (tOfcFlowEntry *) kmalloc (sizeof (tOfcFlowEntry),
+                                            GFP_KERNEL);
+    if (pFlowEntry == NULL)
+    {
+        printk (KERN_CRIT "Failed to allocate memory for " 
+                          "new flow\r\n");
+        return NULL;
+    }
+
+    /* Populate flow entry fields */
+    memset (pFlowEntry, 0, sizeof (tOfcFlowEntry));
+    pFlowEntry->cookie.hi = pFlowMod->cookie.hi;
+    pFlowEntry->cookie.lo = pFlowMod->cookie.lo;
+    pFlowEntry->tableId = pFlowMod->tableId;
+    pFlowEntry->idleTimeout = ntohs (pFlowMod->idleTimeout);
+    pFlowEntry->hardTimeout = ntohs (pFlowMod->hardTimeout);
+    pFlowEntry->priority = ntohs (pFlowMod->priority);
+    pFlowEntry->bufId = ntohl (pFlowMod->bufId);
+    pFlowEntry->outPort = ntohl (pFlowMod->outPort);
+    pFlowEntry->outGrp = ntohl (pFlowMod->outGrp);
+    pFlowEntry->flags = ntohs (pFlowMod->flags);
+    INIT_LIST_HEAD (&pFlowEntry->matchList);
+    INIT_LIST_HEAD (&pFlowEntry->instrList);
+    
+    /* Add match fields list in flow entry */
+    if (OfcCpAddMatchFieldsInFlow (pFlowMod, flowModLen, pFlowEntry)
+        != OFC_SUCCESS)
+    {
+        kfree (pFlowEntry);
+        pFlowEntry = NULL;
+        return NULL;
+    }
+
+    /* Add instruction list in flow entry */
+    if (OfcCpAddInstrListInFlow (pFlowMod, flowModLen, pFlowEntry)
+        != OFC_SUCCESS)
+    {
+        kfree (pFlowEntry);
+        pFlowEntry = NULL;
+        return NULL;
+    }
+
+    return pFlowEntry;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpAddMatchFieldsInFlow
+*
+* Description: This function adds list of match fields in flow
+*              entry
+*
+* Input: pFlowMod - Pointer to flow mod header
+*        flowModLen - Length of flow mod packet
+*        pFlowEntry - Pointer to flow entry
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpAddMatchFieldsInFlow (tOfcFlowModHdr *pFlowMod, 
+                               __u16 flowModLen,
+                               tOfcFlowEntry *pFlowEntry)
+{
+    tOfcMatchTlv     *pMatchTlv = NULL;
+    tOfcMatchOxmTlv  *pOfcMatchOxmTlv = NULL;
+    tMatchListEntry  *pMatchList = NULL;
+    __u16            matchTlvLen = 0;
+    __u8             oxmTlvLen = 0;
+    __u32            inPort = 0;
+
+    if (flowModLen < OFC_MATCH_TLV_OFFSET)
+    {
+        printk (KERN_CRIT "Invalid flow mod message length\r\n");
+        return OFC_FAILURE;
+    }
+
+    pMatchTlv = (tOfcMatchTlv *) (void *) (((__u8 *) pFlowMod) + 
+                                           OFC_MATCH_TLV_OFFSET);
+    if (ntohs (pMatchTlv->type) != OFPMT_OXM)
+    {
+        printk (KERN_CRIT "Match field type mismatch!!\r\n");
+        return OFC_FAILURE;
+    }
+
+    matchTlvLen = ntohs (pMatchTlv->length);
+    /* Discern length of match Oxm TLV */
+    matchTlvLen = matchTlvLen - (sizeof (pMatchTlv->type) + 
+                                 sizeof (pMatchTlv->length));
+
+    pOfcMatchOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                      (((__u8 *) pMatchTlv) + sizeof (pMatchTlv->type) +
+                         sizeof (pMatchTlv->length));
+    oxmTlvLen = sizeof(pOfcMatchOxmTlv->Class) + 
+                sizeof(pOfcMatchOxmTlv->field) +
+                sizeof(pOfcMatchOxmTlv->length);
+
+    /* Add each Oxm match to flow entry match list */
+    while (matchTlvLen > 0)
+    {
+        if (ntohs (pOfcMatchOxmTlv->Class) != OFPXMC_OPENFLOW_BASIC)
+        {
+            matchTlvLen = matchTlvLen - (oxmTlvLen +  
+                                         pOfcMatchOxmTlv->length);
+            pOfcMatchOxmTlv =
+                (tOfcMatchOxmTlv *) (void *) (((__u8 *) pOfcMatchOxmTlv) + 
+                                               oxmTlvLen +
+                                               pOfcMatchOxmTlv->length);
+            continue;
+        }
+
+        if ((pOfcMatchOxmTlv->field >> 1) >= OFCXMT_OFB_MAX)
+        {
+            matchTlvLen = matchTlvLen - (oxmTlvLen +  
+                                         pOfcMatchOxmTlv->length);
+            pOfcMatchOxmTlv =
+                (tOfcMatchOxmTlv *) (void *) (((__u8 *) pOfcMatchOxmTlv) + 
+                                               oxmTlvLen +
+                                               pOfcMatchOxmTlv->length);
+            continue;
+        }
+
+        pMatchList = (tMatchListEntry *) kmalloc (sizeof(tMatchListEntry),
+                                                  GFP_KERNEL);
+        if (pMatchList == NULL)
+        {
+            printk (KERN_CRIT "Failed to allocate memory to match "
+                              "list entry\r\n");
+            /* TODO: Delete each match list entry */
+            return OFC_FAILURE;
+        }
+
+        memset (pMatchList, 0, sizeof (tMatchListEntry));
+        pMatchList->field = pOfcMatchOxmTlv->field >> 1;
+        pMatchList->length = pOfcMatchOxmTlv->length;
+        memcpy (pMatchList->aValue, pOfcMatchOxmTlv->aValue,
+                pMatchList->length);
+
+        INIT_LIST_HEAD (&pMatchList->list);
+        list_add_tail (&pMatchList->list, &pFlowEntry->matchList);
+
+        /* Update match fields structure */
+        switch (pMatchList->field)
+        {
+            case OFCXMT_OFB_IN_PORT:
+                memcpy (&inPort, pMatchList->aValue, 
+                        pMatchList->length);
+                inPort = ntohl (inPort);
+                pFlowEntry->matchFields.inPort = inPort;
+                break;
+
+            case OFCXMT_OFB_ETH_DST:
+                memcpy (pFlowEntry->matchFields.aDstMacAddr,
+                        pMatchList->aValue, pMatchList->length);
+                break;
+
+            case OFCXMT_OFB_ETH_SRC:
+                memcpy (pFlowEntry->matchFields.aSrcMacAddr,
+                        pMatchList->aValue, pMatchList->length);
+                break;
+
+            case OFCXMT_OFB_VLAN_VID:
+                memcpy (&pFlowEntry->matchFields.vlanId,
+                        pMatchList->aValue, pMatchList->length);
+                pFlowEntry->matchFields.vlanId =
+                    ntohs (pFlowEntry->matchFields.vlanId);
+                break;
+
+            case OFCXMT_OFB_ETH_TYPE:
+                memcpy (&pFlowEntry->matchFields.etherType,
+                        pMatchList->aValue, pMatchList->length);
+                pFlowEntry->matchFields.etherType =
+                    ntohs (pFlowEntry->matchFields.etherType);
+                break;
+
+            case OFCXMT_OFB_IP_PROTO:
+                memcpy (&pFlowEntry->matchFields.protocolType,
+                        pMatchList->aValue, pMatchList->length);
+                break;
+
+            case OFCXMT_OFB_IPV4_SRC:
+                memcpy (&pFlowEntry->matchFields.srcIpAddr,
+                        pMatchList->aValue, pMatchList->length);
+                pFlowEntry->matchFields.srcIpAddr =
+                    ntohl (pFlowEntry->matchFields.srcIpAddr);
+                break;
+
+            case OFCXMT_OFB_IPV4_DST:
+                memcpy (&pFlowEntry->matchFields.dstIpAddr,
+                        pMatchList->aValue, pMatchList->length);
+                pFlowEntry->matchFields.dstIpAddr =
+                    ntohl (pFlowEntry->matchFields.dstIpAddr);
+                break;
+
+            case OFCXMT_OFB_TCP_SRC:
+                memcpy (&pFlowEntry->matchFields.srcPortNum,
+                        pMatchList->aValue, pMatchList->length);
+                pFlowEntry->matchFields.srcPortNum =
+                    ntohs (pFlowEntry->matchFields.srcPortNum);
+                pFlowEntry->matchFields.l4HeaderType = OFC_TCP_PROT_TYPE;
+                break;
+
+            case OFCXMT_OFB_TCP_DST:
+                memcpy (&pFlowEntry->matchFields.dstPortNum,
+                        pMatchList->aValue, pMatchList->length);
+                pFlowEntry->matchFields.dstPortNum =
+                    ntohs (pFlowEntry->matchFields.dstPortNum);
+                pFlowEntry->matchFields.l4HeaderType = OFC_TCP_PROT_TYPE;
+                break;
+
+            case OFCXMT_OFB_UDP_SRC:
+                memcpy (&pFlowEntry->matchFields.srcPortNum,
+                        pMatchList->aValue, pMatchList->length);
+                pFlowEntry->matchFields.srcPortNum =
+                    ntohs (pFlowEntry->matchFields.srcPortNum);
+                pFlowEntry->matchFields.l4HeaderType = OFC_UDP_PROT_TYPE;
+                break;
+
+            case OFCXMT_OFB_UDP_DST:
+                memcpy (&pFlowEntry->matchFields.dstPortNum,
+                        pMatchList->aValue, pMatchList->length);
+                pFlowEntry->matchFields.dstPortNum =
+                    ntohs (pFlowEntry->matchFields.dstPortNum);
+                pFlowEntry->matchFields.l4HeaderType = OFC_UDP_PROT_TYPE;
+                break;
+
+            default:
+                break;
+        }
+
+        matchTlvLen = matchTlvLen - (oxmTlvLen +
+                                     pOfcMatchOxmTlv->length);
+        pOfcMatchOxmTlv =
+            (tOfcMatchOxmTlv *) (void *) (((__u8 *) pOfcMatchOxmTlv) + 
+                                           oxmTlvLen +
+                                           pOfcMatchOxmTlv->length);
+    }
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpAddInstrListInFlow
+*
+* Description: This function adds list of instructions in flow
+*              entry
+*
+* Input: pFlowMod - Pointer to flow mod header
+*        flowModLen - Length of flow mod packet
+*        pFlowEntry - Pointer to flow entry
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpAddInstrListInFlow (tOfcFlowModHdr *pFlowMod, 
+                             __u16 flowModLen,
+                             tOfcFlowEntry *pFlowEntry)
+{
+    tOfcInstrTlv    *pInstrTlv = NULL;
+    tOfcInstrList   *pInstrList = NULL;
+    tOfcMatchTlv    *pMatchTlv = NULL;
+    tOfcActionTlv   *pActionTlv = NULL;
+    __u8            *pPktParser = NULL;
+    __u16           matchTlvLen = 0;
+    __u16           instrTlvLen = 0;
+    __u16           actionTlvLen = 0;
+ 
+    /* Compute instruction list offset */
+    pMatchTlv = (tOfcMatchTlv *) (void *) (((__u8 *) pFlowMod) +
+                                           OFC_MATCH_TLV_OFFSET);
+    matchTlvLen = ntohs (pMatchTlv->length);
+    if (matchTlvLen % 8)
+    {
+        matchTlvLen = (matchTlvLen + 8) - (matchTlvLen % 8);
+    }
+
+    pInstrTlv = (tOfcInstrTlv *) (void *) (((__u8 *) pMatchTlv) +
+                                            matchTlvLen);
+    instrTlvLen = flowModLen - (OFC_MATCH_TLV_OFFSET + matchTlvLen);
+
+    while (instrTlvLen > 0)
+    {
+        pInstrList = (tOfcInstrList *) kmalloc (sizeof(tOfcInstrList),
+                                                GFP_KERNEL);
+        if (pInstrList == NULL)
+        {
+            printk (KERN_CRIT "Failed to allocated memory to "
+                              "instruction list\r\n");
+            /* TODO: Delete instruction list */
+            return OFC_FAILURE;
+        }
+
+        memset (pInstrList, 0, sizeof (tOfcInstrList));
+        pInstrList->instrType = ntohs (pInstrTlv->type);
+        INIT_LIST_HEAD (&pInstrList->list);
+        INIT_LIST_HEAD (&pInstrList->u.actionList);
+     
+        switch (pInstrList->instrType)
+        {
+            case OFCIT_GOTO_TABLE:
+                pPktParser = 
+                    (__u8 *) (void *) (((__u8 *) pInstrTlv) + 
+                                       sizeof (pInstrTlv->type) +
+                                       sizeof (pInstrTlv->length));
+                memcpy (&pInstrList->u.tableId, pPktParser,
+                        sizeof (pInstrList->u.tableId));
+                if ((pInstrList->u.tableId <= pFlowEntry->tableId)
+                    || (pInstrList->u.tableId >= OFC_MAX_FLOW_TABLES))
+                {
+                    printk (KERN_CRIT "Invalid table Id in GOTO"
+                                      " instruction\r\n");
+                    /* TODO: Delete instruction list */
+                    return OFC_FAILURE;
+                }
+
+                list_add_tail (&pInstrList->list, 
+                               &pFlowEntry->instrList);
+                break;
+
+            case OFCIT_WRITE_ACTIONS:
+            case OFCIT_APPLY_ACTIONS:
+                pActionTlv = (tOfcActionTlv *) (void *)
+                              (((__u8 *) pInstrTlv) + 
+                               sizeof (pInstrTlv->type) +
+                               sizeof (pInstrTlv->length) + 4);
+                actionTlvLen = ntohs (pInstrTlv->length) -
+                               (sizeof (pInstrTlv->type) +
+                                sizeof (pInstrTlv->length) + 4);
+                if (OfcCpAddActionListToInstr (pActionTlv,
+                                               actionTlvLen, 
+                                               pInstrList) 
+                    != OFC_SUCCESS)
+                {
+                    printk (KERN_CRIT "Failed to add action list in"
+                                      " instruction\r\n");
+                    /* TODO: Delete instruction list */
+                    return OFC_FAILURE;
+                }
+
+                list_add_tail (&pInstrList->list,
+                               &pFlowEntry->instrList);
+                break;
+                
+        }
+
+        instrTlvLen -= (ntohs (pInstrTlv->length));
+        pInstrTlv = (tOfcInstrTlv *) (void *) 
+                     (((__u8 *) pInstrTlv) + ntohs (pInstrTlv->length));
+    }
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpAddInstrListInFlow
+*
+* Description: This function adds list of actions in flow
+*              entry instruction list
+*
+* Input: pActionTlv - Pointer to action TLV
+*        actionTlvLen - Length of action list TLVs
+*
+* Output: pInstrList - Pointer to instruction list
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpAddActionListToInstr (tOfcActionTlv *pActionTlv,
+                               __u16 actionTlvLen,
+                               tOfcInstrList *pInstrList)
+{
+    tOfcActionList  *pActionList = NULL;
+    __u8            *pPktParser = NULL;
+    
+    while (actionTlvLen > 0)
+    {
+        pActionList = (tOfcActionList *) kmalloc (sizeof(tOfcActionList),
+                                                  GFP_KERNEL);
+        if (pActionList == NULL)
+        {
+            printk (KERN_CRIT "Failed to allocate memory to action "
+                              "list\r\n");
+            /* TODO: Delete action list */
+            return OFC_FAILURE;
+        }
+
+        memset (pActionList, 0, sizeof (tOfcActionList));
+        pActionList->actionType = ntohs (pActionTlv->type);
+        INIT_LIST_HEAD (&pActionList->list);
+
+        switch (pActionList->actionType)
+        {
+            case OFCAT_OUTPUT:
+                pPktParser = (__u8 *) (void *)
+                              (((__u8 *) pActionTlv) +
+                               sizeof (pActionTlv->type) +
+                               sizeof (pActionTlv->length));
+                memcpy (&pActionList->u.outPort, pPktParser,
+                        sizeof (pActionList->u.outPort));
+                pActionList->u.outPort =
+                    ntohl (pActionList->u.outPort);
+
+                list_add_tail (&pActionList->list,
+                               &pInstrList->u.actionList);
+                break;
+
+            default:
+                /* TODO: Support other actions? */
+                printk (KERN_CRIT "Action not supported presently\r\n");
+                return OFC_FAILURE;
+        }
+
+        actionTlvLen -= (ntohs (pActionTlv->length));
+        pActionTlv = (tOfcActionTlv *) (void *) 
+                      (((__u8 *) pActionTlv) + 
+                       (ntohs (pActionTlv->length)));
+    }
+
     return OFC_SUCCESS;
 }
