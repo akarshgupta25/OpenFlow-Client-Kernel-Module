@@ -34,7 +34,6 @@ int OfcCpMainInit (void)
 
     /* Initialize semaphore */
     sema_init (&gOfcCpGlobals.semId, 1);
-    sema_init (&gOfcCpGlobals.cntrlPktSemId, 1);
     sema_init (&gOfcCpGlobals.dpMsgQSemId, 1);
 
     /* Initialize queues */
@@ -116,113 +115,111 @@ int OfcCpRxControlPacket (void)
 {
     tOfcOfHdr  *pOfHdr = NULL;
     __u8       *pCntrlPkt = NULL;
-    __u32      pktLen = 0;
-    __u32      numCntrlPktsInQ = 0;
+    __u8       *pPkt = NULL;
+    __u16      pktLen = 0;
+    __u16      cntrlPktLen = 0;
+    __u16      bytesProcessed = 0;
+    int        retVal = OFC_SUCCESS;
 
-    down_interruptible (&gOfcCpGlobals.cntrlPktSemId);
-
-    while ((numCntrlPktsInQ = OfcCpRecvFromCntrlPktQ()) != 0)
-    {
     printk (KERN_INFO "Before socket receive\r\n"); 
 
-    if (OfcCpRecvCntrlPktOnSock (&pCntrlPkt, &pktLen) 
+    if (OfcCpRecvCntrlPktOnSock (&pPkt, &pktLen) 
         != OFC_SUCCESS)
     {
-        continue;
+        printk (KERN_CRIT "Failed to read control packet from"
+                          " socket\r\n");
         return OFC_FAILURE;
     }
 
-    if (pCntrlPkt == NULL)
+    printk (KERN_INFO "Control packet received (pktLen:%d)\r\n", pktLen);
+
+    /* On each read call, socket returns all the control messages
+     * present in the socket queue. Therefore, the packets need
+     * need to be separated and processed sequentially */
+    pCntrlPkt = pPkt;
+    while (bytesProcessed < pktLen)
     {
-        continue;
-    }
-    printk (KERN_INFO "Control packet received\r\n"); 
+        pOfHdr = (tOfcOfHdr *) ((void *) pCntrlPkt);
+        cntrlPktLen = ntohs (pOfHdr->length);
+        printk (KERN_INFO "Processing a packet (bytesProcessed:%d, cntrlPktLen:%d)\r\n", bytesProcessed, cntrlPktLen);
 
-    /* Validate OpenFlow version */
-    pOfHdr = (tOfcOfHdr *) ((void *) pCntrlPkt);
-    if (pOfHdr->version != OFC_VERSION)
-    {
-        printk (KERN_CRIT "OpenFlow version mismatch!!\r\n");
-        /* TODO: Send error message and handle for higher versions */
-        kfree (pCntrlPkt);
-        pCntrlPkt = NULL;
-        continue;
-#if 0
-        return OFC_FAILURE;
-#endif
-    }
+        /* Validate OpenFlow version */
+        if (pOfHdr->version != OFC_VERSION)
+        {
+            printk (KERN_CRIT "OpenFlow version mismatch!!\r\n");
+            /* TODO: Send error message and handle for higher versions */
+            bytesProcessed += cntrlPktLen;
+            pCntrlPkt += cntrlPktLen;
+            retVal = OFC_FAILURE;
+            continue;
+        }
 
-    /* Validate packet type */
-    if (pOfHdr->type >= OFPT_MAX_PKT_TYPE)
-    {
-        printk (KERN_CRIT "Invalid OpenFlow packet type!!\r\n");
-        /* TODO: Send error message */
-        kfree (pCntrlPkt);
-        pCntrlPkt = NULL;
-        continue;
-#if 0
-        return OFC_FAILURE;
-#endif
-    }
+        /* Validate packet type */
+        if (pOfHdr->type >= OFPT_MAX_PKT_TYPE)
+        {
+            printk (KERN_CRIT "Invalid OpenFlow packet type!!\r\n");
+            /* TODO: Send error message */
+            bytesProcessed += cntrlPktLen;
+            pCntrlPkt += cntrlPktLen;
+            retVal = OFC_FAILURE;
+            continue;
+        }
 
-    switch (pOfHdr->type)
-    {
-        case OFPT_HELLO:
-            OfcCpSendHelloPacket (pOfHdr->xid);
-            break;
+        switch (pOfHdr->type)
+        {
+            case OFPT_HELLO:
+                OfcCpSendHelloPacket (pOfHdr->xid);
+                break;
 
-        case OFPT_ECHO_REQUEST:
-            break;
+            case OFPT_ECHO_REQUEST:
+                break;
 
-        case OFPT_ECHO_REPLY:
-            break;
+            case OFPT_ECHO_REPLY:
+                break;
 
-        case OFPT_FEATURES_REQUEST:
-            OfcCpSendFeatureReply (pCntrlPkt);
-            break;
+            case OFPT_FEATURES_REQUEST:
+                OfcCpSendFeatureReply (pCntrlPkt);
+                break;
 
-        case OFPT_GET_CONFIG_REQUEST:
-            break;
+            case OFPT_GET_CONFIG_REQUEST:
+                break;
 
-        case OFPT_SET_CONFIG:
-            break;
+            case OFPT_SET_CONFIG:
+                break;
 
-        case OFPT_PACKET_OUT:
-            break;
+            case OFPT_PACKET_OUT:
+                break;
 
-        case OFPT_FLOW_MOD:
-            OfcCpProcessFlowMod (pCntrlPkt, pktLen);
-            break;
+            case OFPT_FLOW_MOD:
+                OfcCpProcessFlowMod (pCntrlPkt, cntrlPktLen);
+                break;
 
-        case OFPT_PORT_MOD:
-            break;
+            case OFPT_PORT_MOD:
+                break;
 
-        case OFPT_TABLE_MOD:
-            break;
+            case OFPT_TABLE_MOD:
+                break;
 
-        case OFPT_MULTIPART_REQUEST:
-            break;
+            case OFPT_MULTIPART_REQUEST:
+                break;
 
-        case OFPT_BARRIER_REQUEST:
-            break;
+            case OFPT_BARRIER_REQUEST:
+                break;
 
-        default:
-            printk (KERN_CRIT "Packet not currently supported\r\n");
-            break; 
-    }
+            default:
+                printk (KERN_CRIT "Packet not currently supported\r\n");
+                break; 
+        }
 
-    /* Released processed control packet */
-    kfree (pCntrlPkt);
-    pCntrlPkt = NULL;
+        bytesProcessed += cntrlPktLen;
+        pCntrlPkt += cntrlPktLen;
     }
 
-    up (&gOfcCpGlobals.cntrlPktSemId);
+    /* Release processed control packet */
+    kfree (pPkt);
+    pPkt = NULL;
 
-#if 0
-    kfree (pCntrlPkt);
-    pCntrlPkt = NULL;
-#endif
-    return OFC_SUCCESS;
+    return retVal;
 }
 
 /******************************************************************                                                                          
@@ -738,7 +735,7 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
 * Returns: OFC_SUCCESS/OFC_FAILURE
 *
 *******************************************************************/
-int OfcCpProcessFlowMod (__u8 *pPkt, __u32 pktLen)
+int OfcCpProcessFlowMod (__u8 *pPkt, __u16 pktLen)
 {
     tOfcFlowModHdr  *pFlowMod = NULL;
     tOfcFlowEntry   *pFlowEntry = NULL;

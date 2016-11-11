@@ -50,7 +50,6 @@ typedef struct
 {
     struct socket    *pCntrlSocket;
     struct semaphore semId;
-    struct semaphore cntrlPktSemId;
     struct semaphore dpMsgQSemId;
     struct list_head dpMsgListHead; /* Queue for messages rx from
                                      * data path sub module */
@@ -220,7 +219,7 @@ int OfcCpSendToDpQ (tDpCpMsgQ *pMsgParam);
 tDpCpMsgQ *OfcCpRecvFromDpMsgQ (void);
 int OfcCpSendToCntrlPktQ (void);
 __u32 OfcCpRecvFromCntrlPktQ (void);
-int OfcCpRecvCntrlPktOnSock (__u8 **ppPkt, __u32 *pPktLen);
+int OfcCpRecvCntrlPktOnSock (__u8 **ppPkt, __u16 *pPktLen);
 int OfcCpSendCntrlPktFromSock (__u8 *pPkt, __u32 pktLen);
 void OfcCpRxDataPathMsg (void);
 int OfcCpAddOpenFlowHdr (__u8 *pPktHdr, __u16 pktHdrLen,
@@ -233,7 +232,7 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
                             tOfcEightByte cookie,
                             tOfcMatchFields matchFields,
                             __u8 **ppOpenFlowPkt);
-int OfcCpProcessFlowMod (__u8 *pPkt, __u32 pktLen);
+int OfcCpProcessFlowMod (__u8 *pPkt, __u16 pktLen);
 tOfcFlowEntry *OfcCpExtractFlow (tOfcFlowModHdr *pFlowMod,
                                  __u16 flowModLen);
 int OfcCpAddMatchFieldsInFlow (tOfcFlowModHdr *pFlowMod, __u16 flowModLen,

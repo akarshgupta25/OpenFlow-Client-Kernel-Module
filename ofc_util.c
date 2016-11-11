@@ -320,7 +320,7 @@ tDpCpMsgQ *OfcCpRecvFromDpMsgQ (void)
 
     return NULL;
 }
-
+#if 0
 /******************************************************************                                                                          
 * Function: OfcCpSendToCntrlPktQ
 *
@@ -371,7 +371,7 @@ __u32 OfcCpRecvFromCntrlPktQ (void)
 
     return gOfcCpGlobals.numCntrlPktInQ;
 }
-
+#endif
 /******************************************************************                                                                          
 * Function: OfcGetNetDevByName
 *
@@ -637,8 +637,10 @@ int OfcCpCreateCntrlSocket (void)
 
     gOfcCpGlobals.pCntrlSocket = socket;
 
+#if 0
     /* Send Hello packet to controller */
     OfcCpSendHelloPacket (htonl (OFC_INIT_TRANSACTION_ID));
+#endif
 
     return OFC_SUCCESS;
 }
@@ -759,7 +761,7 @@ int OfcDpSendDataPktOnSock (__u8 dataIfNum, __u8 *pPkt,
 * Returns: OFC_SUCCESS/OFC_FAILURE
 *
 *******************************************************************/
-int OfcCpRecvCntrlPktOnSock (__u8 **ppPkt, __u32 *pPktLen)
+int OfcCpRecvCntrlPktOnSock (__u8 **ppPkt, __u16 *pPktLen)
 {
     struct msghdr msg;
     struct iovec  iov;

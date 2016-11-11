@@ -40,8 +40,8 @@ unsigned int OfcNetFilterPreRouteHook (const struct nf_hook_ops *ops,
                                        const struct net_device *out,
                                        int (*okfn)(struct sk_buff*))
 {
-    struct iphdr *iph = NULL;
-    int          dataIfNum = 0;
+    struct iphdr  *iph = NULL;
+    int           dataIfNum = 0;
 
     /* Check whether data packet has been received */
     for (dataIfNum = 0; dataIfNum < gNumOpenFlowIf; dataIfNum++)
@@ -65,8 +65,17 @@ unsigned int OfcNetFilterPreRouteHook (const struct nf_hook_ops *ops,
         if ((iph != NULL) && 
             (gCntrlIpAddr == (ntohl (iph->saddr))))
         {
-            OfcCpSendToCntrlPktQ();
-            OfcCpSendEvent (OFC_CTRL_PKT_EVENT);
+            /* Packet received from controller. Send event
+             * to control path task only if it is an
+             * OpenFlow packet i.e. TCP packet consisting
+             * of some payload. The control path task
+             * will validate whether payload is OpenFlow
+             * packet or not */
+            if (ntohs (iph->tot_len) != 
+                OFC_HEADER_OFFSET_FROM_IP)
+            {
+                OfcCpSendEvent (OFC_CTRL_PKT_EVENT);
+            }
         }
     }
     
