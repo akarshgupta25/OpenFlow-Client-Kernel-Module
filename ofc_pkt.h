@@ -80,4 +80,35 @@ typedef struct
     __u32      reserved;
 } tOfcCpFeatReply;
 
+typedef struct
+{
+    __u16  type;
+    __u16  flags;
+    __u8   pad[4];
+} tOfcCpMultipartHeader;
+
+typedef struct
+{
+    char mfcDesc[OFC_DESCR_STRING_LEN];
+    char hwDesc[OFC_DESCR_STRING_LEN];
+    char swDesc[OFC_DESCR_STRING_LEN];
+    char serialNum[OFC_SERIAL_NUM_LEN];
+    char dpDesc[OFC_DESCR_STRING_LEN];
+} tOfcMultipartDesc;
+
+struct ofp_match;
+typedef struct
+{
+    uint8_t table_id;
+    uint8_t pad[3];
+    uint32_t out_port;
+    uint32_t out_group;
+    uint8_t pad2[4];
+    uint64_t cookie;
+    uint64_t cookie_mask;
+    struct ofp_match match;
+} tOfcMultipartFlow;
+
+
+
 #endif /* __OFC_PKT_H__ */

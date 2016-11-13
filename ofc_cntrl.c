@@ -188,6 +188,91 @@ int OfcCpSendFeatureReply (char *cntrlPkt)
     return OFC_SUCCESS;
 }
 
+int ofcCpMultipartDesc (__u8 **body)
+{
+    char hwDesc[] = "Test Hardware";
+    char mfDesc[] = "Test Manufacturer";
+    char swDesc[] = "OpenFlow 1.3 Version";
+    char serialNum[] = "11 11 11 11 11 11";
+    char dpDesc[] = "Test OpenFlow Switch";
+    tOfcMultipartDesc *replyDesc;
+
+    *body = kmalloc (sizeof(tOfcMultipartDesc), GFP_KERNEL);
+    if (!(*body))
+    {
+        printk (KERN_CRIT "Failed to allocate memory to Multipart Request "
+                "Response packet type DESC\n");
+        return OFC_FAILURE;
+    }
+    memset(*body, 0, sizeof(tOfcMultipartDesc));
+
+    replyDesc = (tOfcMultipartDesc *)*body;
+
+    strcpy(replyDesc->mfcDesc, mfDesc);
+    strcpy(replyDesc->hwDesc, hwDesc);
+    strcpy(replyDesc->swDesc, swDesc);
+    strcpy(replyDesc->serialNum, serialNum);
+    strcpy(replyDesc->dpDesc, dpDesc);
+    return OFC_SUCCESS;
+}
+
+int ofcCpMultipartFlow (__u8 **body)
+{
+    OfcDpGetFlowTableEntry(0);
+    return OFC_SUCCESS;
+}
+
+int OfcCpHandleMultipart (__u8 *pCntrlPkt)
+{
+    int length = 0;
+    __u8 *replyPkt = NULL;
+    __u8 *body = NULL;
+    tOfcCpMultipartHeader *request = (tOfcCpMultipartHeader *)pCntrlPkt;
+
+    switch(request->type)
+    {
+        case OFPMP_DESC:
+        {
+            if (ofcCpMultipartDesc(&body) != OFC_SUCCESS)
+            {
+                return OFC_FAILURE;
+            }
+            length = sizeof(tOfcMultipartDesc);
+        }
+        case OFPMP_FLOW:
+        case OFPMP_AGGREGATE:
+        case OFPMP_TABLE:
+        case OFPMP_PORT_STATS:
+        case OFPMP_QUEUE:
+        case OFPMP_GROUP:
+        case OFPMP_GROUP_DESC:
+        case OFPMP_GROUP_FEATURES:
+        case OFPMP_METER:
+        case OFPMP_METER_CONFIG:
+        case OFPMP_METER_FEATURES:
+        case OFPMP_TABLE_FEATURES:
+        case OFPMP_PORT_DESC:
+        case OFPMP_EXPERIMENTER:
+        default:
+            return OFC_FAILURE;
+
+    }
+
+    if ((OfcCpAddOpenFlowHdr(body, 
+                             length,
+                             OFPT_MULTIPART_REPLY,
+                             ((tOfcOfHdr *)pCntrlPkt)->xid, 
+                             &replyPkt) != OFC_SUCCESS) || 
+        (OfcCpSendCntrlPktFromSock(replyPkt, 
+                                   ntohs(((tOfcOfHdr *)replyPkt)->length)) != OFC_SUCCESS))
+    {
+        return OFC_FAILURE;
+    }
+
+    kfree(body);
+    kfree(replyPkt);
+    return OFC_SUCCESS;
+}
 
 /******************************************************************                                                                          
 * Function: OfcCpRxControlPacket
@@ -272,6 +357,7 @@ int OfcCpRxControlPacket (void)
             break;
 
         case OFPT_MULTIPART_REQUEST:
+            OfcCpHandleMultipart(pCntrlPkt);
             break;
 
         case OFPT_BARRIER_REQUEST:

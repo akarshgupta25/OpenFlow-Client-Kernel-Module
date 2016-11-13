@@ -56,4 +56,7 @@
 #define OFC_NO_BUFFER           0xffffffff
 #define OFC_CTRL_MAIN_CONNECTION 0x0
 
+#define OFC_DESCR_STRING_LEN 256
+#define OFC_SERIAL_NUM_LEN 32
+
 #endif /* __OFC_DEFN_H__ */
