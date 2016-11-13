@@ -215,6 +215,7 @@ int OfcDpRxControlPathMsg (void)
         kfree (pMsgQ);
         pMsgQ = NULL;
     }
+    OfcDumpFlows(0);
 
     up (&gOfcDpGlobals.cpMsgQSemId);
 
@@ -279,6 +280,7 @@ int OfcDpCreateFlowTables (void)
         INIT_LIST_HEAD (&pTableMissFlow->list);
         pTableMissFlow->priority = OFC_MIN_FLOW_PRIORITY;
         pTableMissFlow->tableId = pFlowTable->tableId;
+        pTableMissFlow->bufId = OFC_NO_BUFFER;
         INIT_LIST_HEAD (&pTableMissFlow->matchList);
         INIT_LIST_HEAD (&pTableMissFlow->instrList);
 
@@ -780,6 +782,8 @@ int OfcDpInsertFlowEntry (tOfcFlowEntry *pFlowEntry)
             continue;
         }
 
+        printk (KERN_INFO "[%s]: Inserting entry in flow table\r\n",
+                           __func__);
         /* Insert new flow before this flow entry */
         INIT_LIST_HEAD (&pFlowEntry->list);
         list_add_tail (&pFlowEntry->list, &pFlowEntryParser->list);

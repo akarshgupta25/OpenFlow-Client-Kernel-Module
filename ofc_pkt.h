@@ -41,16 +41,6 @@ typedef struct
 
 typedef struct
 {
-    __u32         bufId;
-    __u16         totLength;
-    __u8          reason;
-    __u8          tableId;
-    tOfcEightByte cookie;
-    tOfcMatchTlv  matchTlv;
-} tOfcPktInHdr;
-
-typedef struct
-{
     __u16  type;
     __u16  length;
 } tOfcInstrTlv;
@@ -90,5 +80,23 @@ typedef struct
     tOfcMatchTlv  OfpMatch;
     tOfcInstrTlv  OfpInstr[0];
 } tOfcFlowModHdr;
+
+typedef struct
+{
+    __u32         bufId;
+    __u16         totLength;
+    __u8          reason;
+    __u8          tableId;
+    tOfcEightByte cookie;
+    tOfcMatchTlv  matchTlv;
+} tOfcPktInHdr;
+
+typedef struct
+{
+    __u32     bufId;
+    __u32     inPort;
+    __u16     actionsLen;
+    __u8      aPad[6];
+} tOfcPktOutHdr;
 
 #endif /* __OFC_PKT_H__ */

@@ -188,6 +188,7 @@ int OfcCpRxControlPacket (void)
                 break;
 
             case OFPT_PACKET_OUT:
+                OfcCpProcessPktOut (pCntrlPkt, cntrlPktLen);
                 break;
 
             case OFPT_FLOW_MOD:
@@ -721,6 +722,39 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
 }
 
 /******************************************************************                                                                          
+* Function: OfcCpProcessPktOut
+*
+* Description: This function processes packet out  messages
+*              received from the controller and takes actions
+*              as mentioned in the message
+*
+* Input: pPkt - Pointer to control packet
+*        pktLen - Length of control packet
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpProcessPktOut (__u8 *pPkt, __u16 pktLen)
+{
+    struct list_head actionList;
+    tOfcActionList   *pActionList = NULL;
+    tOfcActionTlv    *pActionTlv = NULL;
+    tOfcPktOutHdr    *pPktOut = NULL;
+    __u16            actionListLen = 0;
+ 
+    pPktOut = 
+        (tOfcPktOutHdr *) (void *) (pPkt + OFC_OPENFLOW_HDR_LEN);
+    actionListLen = ntohs (pPktOut->actionsLen);
+
+    pActionTlv = (tOfcActionTlv *) (void *) (((__u8 *) pPktOut) +
+                                           sizeof (tOfcPktOutHdr));
+
+    return OFC_SUCCESS;   
+}
+
+/******************************************************************                                                                          
 * Function: OfcCpProcessFlowMod
 *
 * Description: This function processes flow mod messages received
@@ -745,6 +779,9 @@ int OfcCpProcessFlowMod (__u8 *pPkt, __u16 pktLen)
     pFlowMod =
         (tOfcFlowModHdr *) (void *) (pPkt + OFC_OPENFLOW_HDR_LEN);
     flowModLen = pktLen - OFC_OPENFLOW_HDR_LEN;
+
+    printk (KERN_INFO "pktLen:%d, flowModLen:%d\r\n", pktLen, flowModLen);
+    OfcDumpPacket ((__u8 *) pFlowMod, flowModLen);
 
     switch (pFlowMod->command)
     {
@@ -882,9 +919,12 @@ int OfcCpAddMatchFieldsInFlow (tOfcFlowModHdr *pFlowMod,
     }
 
     matchTlvLen = ntohs (pMatchTlv->length);
+    printk (KERN_INFO "matchTlvLen(before): %d\r\n", matchTlvLen);
+    OfcDumpPacket ((__u8 *) pMatchTlv, matchTlvLen);
     /* Discern length of match Oxm TLV */
     matchTlvLen = matchTlvLen - (sizeof (pMatchTlv->type) + 
                                  sizeof (pMatchTlv->length));
+    printk (KERN_INFO "matchTlvLen(after): %d\r\n", matchTlvLen);
 
     pOfcMatchOxmTlv = (tOfcMatchOxmTlv *) (void *) 
                       (((__u8 *) pMatchTlv) + sizeof (pMatchTlv->type) +
@@ -896,6 +936,7 @@ int OfcCpAddMatchFieldsInFlow (tOfcFlowModHdr *pFlowMod,
     /* Add each Oxm match to flow entry match list */
     while (matchTlvLen > 0)
     {
+        printk (KERN_INFO "Parsing match list\r\n");
         if (ntohs (pOfcMatchOxmTlv->Class) != OFPXMC_OPENFLOW_BASIC)
         {
             matchTlvLen = matchTlvLen - (oxmTlvLen +  
@@ -1073,13 +1114,17 @@ int OfcCpAddInstrListInFlow (tOfcFlowModHdr *pFlowMod,
     {
         matchTlvLen = (matchTlvLen + 8) - (matchTlvLen % 8);
     }
+    printk (KERN_INFO "[%s]: matchTlvLen: %d\r\n", __func__, matchTlvLen);
 
     pInstrTlv = (tOfcInstrTlv *) (void *) (((__u8 *) pMatchTlv) +
                                             matchTlvLen);
     instrTlvLen = flowModLen - (OFC_MATCH_TLV_OFFSET + matchTlvLen);
+    printk (KERN_INFO "[%s]: instrTlvLen: %d\r\n", __func__, instrTlvLen);
+    OfcDumpPacket ((__u8 *) pInstrTlv, instrTlvLen);
 
     while (instrTlvLen > 0)
     {
+        printk (KERN_INFO "Parsing Instruction List\r\n");
         pInstrList = (tOfcInstrList *) kmalloc (sizeof(tOfcInstrList),
                                                 GFP_KERNEL);
         if (pInstrList == NULL)
@@ -1172,8 +1217,12 @@ int OfcCpAddActionListToInstr (tOfcActionTlv *pActionTlv,
     tOfcActionList  *pActionList = NULL;
     __u8            *pPktParser = NULL;
     
+    printk (KERN_INFO "[%s]: actionTlvLen:%d\r\n", __func__, actionTlvLen);
+    OfcDumpPacket ((__u8 *) pActionTlv, actionTlvLen);
+
     while (actionTlvLen > 0)
     {
+        printk (KERN_INFO "[%s]: Parsing Action List\r\n", __func__);
         pActionList = (tOfcActionList *) kmalloc (sizeof(tOfcActionList),
                                                   GFP_KERNEL);
         if (pActionList == NULL)
@@ -1199,6 +1248,7 @@ int OfcCpAddActionListToInstr (tOfcActionTlv *pActionTlv,
                         sizeof (pActionList->u.outPort));
                 pActionList->u.outPort =
                     ntohl (pActionList->u.outPort);
+                printk (KERN_INFO "[%s]: pActionList->u.outPort: 0x%x\r\n", __func__, pActionList->u.outPort);
 
                 list_add_tail (&pActionList->list,
                                &pInstrList->u.actionList);
