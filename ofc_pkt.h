@@ -96,7 +96,12 @@ typedef struct
     char dpDesc[OFC_DESCR_STRING_LEN];
 } tOfcMultipartDesc;
 
-struct ofp_match;
+typedef struct 
+{
+    uint16_t type;
+    uint16_t length;
+} tOfcMatch;
+
 typedef struct
 {
     uint8_t table_id;
@@ -106,9 +111,25 @@ typedef struct
     uint8_t pad2[4];
     uint64_t cookie;
     uint64_t cookie_mask;
-    struct ofp_match match;
-} tOfcMultipartFlow;
+    tOfcMatch match;
+} tOfcMultipartFlowStats;
 
-
+typedef struct
+{
+    uint16_t length;
+    uint8_t table_id;
+    uint8_t pad;
+    uint32_t duration_sec;
+    uint32_t duration_nsec;
+    uint16_t priority;
+    uint16_t idle_timeout;
+    uint16_t hard_timeout;
+    uint16_t flags;
+    uint8_t pad2[4];
+    uint64_t cookie;
+    uint64_t packet_count;
+    uint64_t byte_count;
+    tOfcMatch match;
+} tOfcMultiPartFlowStatsReply;
 
 #endif /* __OFC_PKT_H__ */

@@ -216,9 +216,143 @@ int ofcCpMultipartDesc (__u8 **body)
     return OFC_SUCCESS;
 }
 
-int ofcCpMultipartFlow (__u8 **body)
+int ofcCpMultipartFlow (__u8 *pCntrlPkt)
 {
-    OfcDpGetFlowTableEntry(0);
+    tOfcFlowTable    *pFlowTable = NULL;
+    struct list_head *pList = NULL;
+    tOfcFlowEntry    *pFlowEntry = NULL;
+    tOfcMatchOxmTlv *oxm = NULL;
+    tOfcMatchFields *matchFields = NULL;
+    tOfcMultiPartFlowStatsReply *flowStatsReply = NULL;
+    tOfcCpMultipartHeader *multipartHeader = NULL;
+    __u16 tlvLen = 0;
+    
+    tOfcMultipartFlowStats *multiFlowReq = (tOfcMultipartFlowStats *)(pCntrlPkt + 
+                                            sizeof(tOfcCpMultipartHeader) +
+                                            sizeof(tOfcCpMultipartHeader));
+
+    oxm = (tOfcMatchOxmTlv *)((__u8 *)multiFlowReq + sizeof(tOfcMultipartFlowStats));
+
+    if (oxm->length == 0)
+    {
+        oxm = NULL;
+    }
+    else
+    {
+        matchFields = (tOfcMatchFields *) kmalloc (sizeof(tOfcMatchFields), GFP_KERNEL);
+        memset(matchFields, 0, sizeof(tOfcMatchFields));
+        while(oxm->length != 0)
+        {
+            if (oxm->class == OFPXMC_OPENFLOW_BASIC)
+            {
+                switch(oxm->field >> 1)
+                {
+                    case OFCXMT_OFB_IN_PORT:
+                    {
+                        memcpy(&(matchFields->inPort), oxm->aValue, oxm->length);
+                        break;
+                    }
+                    case OFCXMT_OFB_ETH_DST:
+                    {
+                        memcpy(&(matchFields->aDstMacAddr), oxm->aValue, oxm->length);
+                        break;
+                    }
+                    case OFCXMT_OFB_ETH_SRC:
+                    {
+                        memcpy(&(matchFields->aSrcMacAddr), oxm->aValue, oxm->length);
+                        break;
+                    }
+                    case OFCXMT_OFB_ETH_TYPE:
+                    {
+                        memcpy(&(matchFields->etherType), oxm->aValue, oxm->length);
+                        break;
+                    }
+                    case OFCXMT_OFB_VLAN_VID:
+                    {
+                        memcpy(&(matchFields->vlanId), oxm->aValue, oxm->length);
+                        break;
+                    }
+                    case OFCXMT_OFB_IP_PROTO:
+                    {
+                        memcpy(&(matchFields->protocolType), oxm->aValue, oxm->length);
+                        break;
+                    }
+                    case OFCXMT_OFB_TCP_SRC:
+                    case OFCXMT_OFB_UDP_SRC:
+                    case OFCXMT_OFB_SCTP_SRC:
+                    {
+                        memcpy(&(matchFields->srcPortNum), oxm->aValue, oxm->length);
+                        break;
+                    }
+                    case OFCXMT_OFB_TCP_DST:
+                    case OFCXMT_OFB_UDP_DST:
+                    case OFCXMT_OFB_SCTP_DST:
+                    {
+                        memcpy(&(matchFields->dstPortNum), oxm->aValue, oxm->length);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            }
+            oxm++;
+        }
+    }
+
+    pFlowTable = OfcDpGetFlowTableEntry (multiFlowReq->table_id);
+    if (pFlowTable == NULL)
+    {
+        printk (KERN_CRIT "Failed to fetch first flow table\r\n");
+        return OFC_FAILURE;
+    }
+
+    multipartHeader = (tOfcCpMultipartHeader *) kmalloc (OFC_MTU_SIZE, GFP_KERNEL);
+    if (multipartHeader == NULL)
+    {
+        return OFC_FAILURE;
+    }
+    memset(multipartHeader, 0, OFC_MTU_SIZE,);
+    multipartHeader->type = OFPMP_FLOW;
+    tlvLen += sizeof(tOfcCpMultipartHeader);
+
+    list_for_each (pList, pFlowEntryList)
+    {
+        pFlowEntry = (tOfcFlowEntry *) pList;
+
+        // Not the entry being queried for if the cookies dont match.
+        if (multiFlowReq->cookie &&
+            ((multiFlowReq->cookie & multiFlowReq->cookieMask) !=
+            (pFlowEntry->cookie & pFlowEntry->cookieMask)))
+        {
+            continue;
+        }
+
+        if (multiFlowReq->out_port != OFPP_ANY &&
+            multiFlowReq->out_port != pFlowEntry->outPort)
+        {
+            continue;
+        }
+        if (!oxm)
+        {
+            // There is an entry saved. Send it out.
+            if (!flowStatsReply)
+            {
+                // Send packet out.
+            }
+
+            // Construct a new one.
+            flowStatsReply = (tOfcMultiPartFlowStatsReply *) kmalloc (sizeof(tOfcMultiPartFlowStatsReply), GFP_KERNEL);
+            memset(flowStatsReply, 0, sizeof(tOfcMultiPartFlowStatsReply));
+            flowStatsReply->byte_count = pFlowEntry->pktMatchCount;
+            flowStatsReply->packet_count = pFlowEntry->pktMatchCount;
+            flowStatsReply->cookie = pFlowEntry->cookie;
+            flowStatsReply->match.type = htons (OFPMT_OXM);
+            // Generate Oxm fields.
+        }
+        else if ( memcmp(matchFields, pFlowEntry->matchFields, sizeof(tOfcMatchFields)) == 0)
+        {
+        }
+    }
     return OFC_SUCCESS;
 }
 
@@ -238,8 +372,25 @@ int OfcCpHandleMultipart (__u8 *pCntrlPkt)
                 return OFC_FAILURE;
             }
             length = sizeof(tOfcMultipartDesc);
+            if ((OfcCpAddOpenFlowHdr(body, 
+                                     length,
+                                     OFPT_MULTIPART_REPLY,
+                                     ((tOfcOfHdr *)pCntrlPkt)->xid, 
+                                     &replyPkt) != OFC_SUCCESS) || 
+                (OfcCpSendCntrlPktFromSock(replyPkt, 
+                                           ntohs(((tOfcOfHdr *)replyPkt)->length)) != OFC_SUCCESS))
+            {
+                return OFC_FAILURE;
+            }
+            kfree(body);
+            kfree(replyPkt);
+            break;
         }
         case OFPMP_FLOW:
+        {
+            ofcCpMultipartFlow(pCntrlPkt);
+            break;
+        }
         case OFPMP_AGGREGATE:
         case OFPMP_TABLE:
         case OFPMP_PORT_STATS:
@@ -258,19 +409,6 @@ int OfcCpHandleMultipart (__u8 *pCntrlPkt)
 
     }
 
-    if ((OfcCpAddOpenFlowHdr(body, 
-                             length,
-                             OFPT_MULTIPART_REPLY,
-                             ((tOfcOfHdr *)pCntrlPkt)->xid, 
-                             &replyPkt) != OFC_SUCCESS) || 
-        (OfcCpSendCntrlPktFromSock(replyPkt, 
-                                   ntohs(((tOfcOfHdr *)replyPkt)->length)) != OFC_SUCCESS))
-    {
-        return OFC_FAILURE;
-    }
-
-    kfree(body);
-    kfree(replyPkt);
     return OFC_SUCCESS;
 }
 
