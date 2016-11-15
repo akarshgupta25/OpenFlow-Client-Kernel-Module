@@ -256,6 +256,11 @@ void OfcCpRxDataPathMsg (void)
         {
             printk (KERN_INFO "Failed to construct Packet-in "
                               "message\r\n");
+            if (pMsgQ->pPkt != NULL)
+            {
+                kfree (pMsgQ->pPkt);
+                pMsgQ->pPkt = NULL;
+            }
             kfree (pMsgQ);
             pMsgQ = NULL;
             continue;
@@ -270,6 +275,11 @@ void OfcCpRxDataPathMsg (void)
         /* Release message */
         kfree (pOpenFlowPkt);
         pOpenFlowPkt = NULL;
+        if (pMsgQ->pPkt != NULL)
+        {
+            kfree (pMsgQ->pPkt);
+            pMsgQ->pPkt = NULL;
+        }
         kfree (pMsgQ);
         pMsgQ = NULL;
     }
@@ -482,6 +492,12 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
     __u8             padBytes = 0;
     __u8             aNullMacAddr[OFC_MAC_ADDR_LEN];
     
+    if (pPkt == NULL)
+    {
+        printk (KERN_CRIT "[%s]: Data packet missing\r\n", __func__);
+        return OFC_FAILURE;
+    }
+
     /* Construct match field TLV  */
     pMatchTlv = (tOfcMatchTlv *) kmalloc (OFC_MTU_SIZE, GFP_KERNEL);
     if (pMatchTlv == NULL)
@@ -738,18 +754,114 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
 *******************************************************************/
 int OfcCpProcessPktOut (__u8 *pPkt, __u16 pktLen)
 {
-    struct list_head actionList;
+    struct list_head *pActionListHead;
     tOfcActionList   *pActionList = NULL;
     tOfcActionTlv    *pActionTlv = NULL;
     tOfcPktOutHdr    *pPktOut = NULL;
+    tDpCpMsgQ        msgQ;
     __u16            actionListLen = 0;
+    __u16            dataPktLen = 0;
+    __u8             *pPktParser = NULL;
+    __u8             *pDataPkt = NULL;
  
+    pActionListHead = (struct list_head *) kmalloc 
+                       (sizeof(struct list_head), GFP_KERNEL);
+    if (pActionListHead == NULL)
+    {
+        printk (KERN_CRIT "Failed to allocate memory to action"
+                          " list head\r\n");
+        return OFC_FAILURE;
+    }
+    INIT_LIST_HEAD (pActionListHead);
+
     pPktOut = 
         (tOfcPktOutHdr *) (void *) (pPkt + OFC_OPENFLOW_HDR_LEN);
     actionListLen = ntohs (pPktOut->actionsLen);
 
     pActionTlv = (tOfcActionTlv *) (void *) (((__u8 *) pPktOut) +
                                            sizeof (tOfcPktOutHdr));
+
+    /* Extract action list to be sent to data path task 
+     * from packet-out message, since actions shall be taken by
+     * data path task */
+    while (actionListLen > 0)
+    {
+        pActionList = (tOfcActionList *) kmalloc 
+                       (sizeof (tOfcActionList), GFP_KERNEL);
+        if (pActionList == NULL)
+        {
+            printk (KERN_CRIT "Failed to allocate memory to "
+                              "action list\r\n");
+            /* TODO: Delete action list */
+            OfcDeleteList (pActionListHead);
+            kfree (pActionListHead);
+            pActionListHead = NULL;
+            return OFC_FAILURE;
+        }
+
+        memset (pActionList, 0, sizeof (tOfcActionList));
+        pActionList->actionType = ntohs (pActionTlv->type); 
+        INIT_LIST_HEAD (&pActionList->list);
+
+        switch (pActionList->actionType)
+        {
+            case OFCAT_OUTPUT:
+                pPktParser = (__u8 *) (void *)
+                              (((__u8 *) pActionTlv) + 
+                               sizeof (pActionTlv->type) +
+                               sizeof (pActionTlv->length));
+                memcpy (&pActionList->u.outPort, pPktParser,
+                        sizeof (pActionList->u.outPort));
+                pActionList->u.outPort = ntohl (pActionList->u.outPort);
+
+                list_add_tail (&pActionList->list, pActionListHead);
+                break;
+
+            default:
+                break;
+        }
+
+        actionListLen -= ntohs (pActionTlv->length);
+        pActionTlv = (tOfcActionTlv *) (void *) 
+                      (((__u8 *) pActionTlv) + ntohs (pActionTlv->length));
+    }
+
+    /* Extract data packet */
+#if 0
+    pActionTlv = (tOfcActionTlv *) (void *) (((__u8 *) pPktOut) +
+                                           sizeof (tOfcPktOutHdr));
+    pPktParser = (__u8 *) (void *) (((__u8 *) pActionTlv + 
+                                    ntohs (pPktOut->actionsLen)));
+#endif
+    pPktParser = (__u8 *) (void *) pActionTlv;
+    dataPktLen = ntohs (((tOfcOfHdr *) pPkt)->length) - 
+                 OFC_OPENFLOW_HDR_LEN - sizeof (tOfcPktOutHdr) - 
+                 (ntohs (pPktOut->actionsLen));
+
+    pDataPkt = (__u8 *) kmalloc (dataPktLen, GFP_KERNEL);
+    if (pDataPkt == NULL)
+    {
+        printk (KERN_CRIT "[%s]: Failed to allocate memory to "
+                          "data packet\r\n", __func__);
+        OfcDeleteList (pActionListHead);
+        kfree (pActionListHead);
+        pActionListHead = NULL;
+        return OFC_FAILURE;
+    }
+    memset (pDataPkt, 0, dataPktLen);
+    memcpy (pDataPkt, pPktParser, dataPktLen);
+                   
+    /* Send message to data path task */
+    memset (&msgQ, 0, sizeof (msgQ));
+    msgQ.msgType = OFC_PACKET_OUT;
+#if 0
+    msgQ.pPkt = pPktParser;
+#endif
+    msgQ.pPkt = pDataPkt;
+    msgQ.pktLen = dataPktLen;
+    msgQ.pActionListHead = pActionListHead;
+    OfcCpSendToDpQ (&msgQ);
+    OfcDpSendEvent (OFC_CP_TO_DP_EVENT);
 
     return OFC_SUCCESS;   
 }
@@ -966,6 +1078,7 @@ int OfcCpAddMatchFieldsInFlow (tOfcFlowModHdr *pFlowMod,
             printk (KERN_CRIT "Failed to allocate memory to match "
                               "list entry\r\n");
             /* TODO: Delete each match list entry */
+            OfcDeleteList (&pFlowEntry->matchList);
             return OFC_FAILURE;
         }
 
@@ -1132,6 +1245,7 @@ int OfcCpAddInstrListInFlow (tOfcFlowModHdr *pFlowMod,
             printk (KERN_CRIT "Failed to allocated memory to "
                               "instruction list\r\n");
             /* TODO: Delete instruction list */
+            OfcDeleteList (&pFlowEntry->instrList);
             return OFC_FAILURE;
         }
 
@@ -1155,6 +1269,7 @@ int OfcCpAddInstrListInFlow (tOfcFlowModHdr *pFlowMod,
                     printk (KERN_CRIT "Invalid table Id in GOTO"
                                       " instruction\r\n");
                     /* TODO: Delete instruction list */
+                    OfcDeleteList (&pFlowEntry->instrList);
                     return OFC_FAILURE;
                 }
 
@@ -1179,6 +1294,7 @@ int OfcCpAddInstrListInFlow (tOfcFlowModHdr *pFlowMod,
                     printk (KERN_CRIT "Failed to add action list in"
                                       " instruction\r\n");
                     /* TODO: Delete instruction list */
+                    OfcDeleteList (&pFlowEntry->instrList);
                     return OFC_FAILURE;
                 }
 
@@ -1230,6 +1346,7 @@ int OfcCpAddActionListToInstr (tOfcActionTlv *pActionTlv,
             printk (KERN_CRIT "Failed to allocate memory to action "
                               "list\r\n");
             /* TODO: Delete action list */
+            OfcDeleteList (&pInstrList->u.actionList);
             return OFC_FAILURE;
         }
 
@@ -1257,6 +1374,7 @@ int OfcCpAddActionListToInstr (tOfcActionTlv *pActionTlv,
             default:
                 /* TODO: Support other actions? */
                 printk (KERN_CRIT "Action not supported presently\r\n");
+                OfcDeleteList (&pInstrList->u.actionList);
                 return OFC_FAILURE;
         }
 

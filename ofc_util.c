@@ -1123,3 +1123,35 @@ int OfcDpExtractPktHdrs (__u8 *pPkt, __u32 pktLen, __u8 inPort,
 
     return OFC_SUCCESS;
 }
+
+/******************************************************************                                                                          
+* Function: OfcDeleteList
+*
+* Description: This function deletes the linked list and frees
+*              memory of each member in the list
+*
+* Input: pListHead - Head of linked list
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDeleteList (struct list_head *pListHead)
+{
+    struct list_head  *pList = NULL;
+ 
+    if (pListHead == NULL)
+    {
+        return OFC_FAILURE;
+    }
+
+    list_for_each (pList, pListHead)
+    {
+        list_del_init (pList);
+        kfree (pList);
+        pList = pListHead;
+    }
+
+    return OFC_SUCCESS;
+}

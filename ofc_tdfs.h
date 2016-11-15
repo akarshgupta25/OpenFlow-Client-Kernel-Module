@@ -119,6 +119,7 @@ typedef struct
 {
     struct list_head list;
     tOfcFlowEntry    *pFlowEntry;
+    struct list_head *pActionListHead;
     __u8             *pPkt;
     __u32            pktLen;
     __u8             inPort;
@@ -151,7 +152,7 @@ typedef struct
 typedef struct
 {
     struct list_head list;
-    __u8             actionType;
+    __u16            actionType;
     union
     {
         __u32  outPort;
@@ -180,6 +181,7 @@ void OfcDumpFlows (__u8 tableId);
 struct net_device *OfcGetNetDevByName (char *pIfName);
 struct net_device *OfcGetNetDevByIp (unsigned int ipAddr);
 int OfcConvertStringToIp (char *pString, unsigned int *pIpAddr);
+int OfcDeleteList (struct list_head *pListHead);
 
 int OfcDpMainTask (void *args);
 int OfcDpCreateSocketsForDataPkts (void);
@@ -210,6 +212,8 @@ int OfcDpExtractPktHdrs (__u8 *pPkt, __u32 pktLen, __u8 inPort,
 int OfcDpRxControlPathMsg (void);
 int OfcDpInsertFlowEntry (tOfcFlowEntry *pFlowEntry);
 int OfcDpDeleteFlowEntry (tOfcFlowEntry *pFlowEntry);
+int OfcDpExecPktOutActions (__u8 *pPkt, __u16 pktLen,
+                            struct list_head *pActionsListHead);
 
 int OfcCpMainTask (void *args);
 int OfcCpReceiveEvent (int events, int *pRxEvents);
@@ -233,6 +237,7 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
                             tOfcEightByte cookie,
                             tOfcMatchFields matchFields,
                             __u8 **ppOpenFlowPkt);
+int OfcCpProcessPktOut (__u8 *pPkt, __u16 pktLen);
 int OfcCpProcessFlowMod (__u8 *pPkt, __u16 pktLen);
 tOfcFlowEntry *OfcCpExtractFlow (tOfcFlowModHdr *pFlowMod,
                                  __u16 flowModLen);
