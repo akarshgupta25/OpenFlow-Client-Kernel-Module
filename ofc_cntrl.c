@@ -216,6 +216,191 @@ int ofcCpMultipartDesc (__u8 **body)
     return OFC_SUCCESS;
 }
 
+__u16 OfcCpConstructMatch (tOfcMatchTlv **ppMatchTlv, 
+                          tOfcMatchFields matchFields,
+                          __u8 inPort)
+{
+    tOfcMatchTlv *pMatchTlv = *ppMatchTlv;
+    __u8             aNullMacAddr[OFC_MAC_ADDR_LEN];
+    tOfcMatchOxmTlv  *pOxmTlv = NULL;
+    __u32            fourByteField = 0;
+    __u16            twoByteField = 0;
+    __u8             oxmTlvLen = 0;
+    __u16            matchTlvLen = 0;
+
+    memset (aNullMacAddr, 0, sizeof(aNullMacAddr));
+
+    pMatchTlv->type = htons (OFPMT_OXM);
+    pOxmTlv = (tOfcMatchOxmTlv *) (void *) (((__u8 *) pMatchTlv) + 
+                                            sizeof(pMatchTlv->type) + 
+                                            sizeof(pMatchTlv->length));
+    oxmTlvLen = sizeof(pOxmTlv->Class) + sizeof(pOxmTlv->field) +
+                sizeof(pOxmTlv->length);
+    printk (KERN_INFO "oxmTlvLen: %u\r\n", oxmTlvLen);
+
+    /* TODO: Not supporting field mask option */
+    /* Add OXM match field TLVs */
+    if (memcmp (matchFields.aDstMacAddr, aNullMacAddr, 
+                OFC_MAC_ADDR_LEN))
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        pOxmTlv->field = OFCXMT_OFB_ETH_DST << 1;
+        pOxmTlv->length = OFC_MAC_ADDR_LEN;
+        memcpy (pOxmTlv->aValue, matchFields.aDstMacAddr, 
+                OFC_MAC_ADDR_LEN);
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (memcmp (matchFields.aSrcMacAddr, aNullMacAddr, 
+                OFC_MAC_ADDR_LEN))
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        pOxmTlv->field = OFCXMT_OFB_ETH_SRC << 1;
+        pOxmTlv->length = OFC_MAC_ADDR_LEN;
+        memcpy (pOxmTlv->aValue, matchFields.aSrcMacAddr, 
+                OFC_MAC_ADDR_LEN);
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (matchFields.vlanId != 0)
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        pOxmTlv->field = OFCXMT_OFB_VLAN_VID << 1;
+        pOxmTlv->length = sizeof (matchFields.vlanId);
+        twoByteField = htons (matchFields.vlanId);
+        memcpy (pOxmTlv->aValue, &twoByteField,
+                sizeof (matchFields.vlanId));
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (matchFields.etherType != 0)
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        pOxmTlv->field = OFCXMT_OFB_ETH_TYPE << 1;
+        pOxmTlv->length = sizeof (matchFields.etherType);
+        twoByteField = htons (matchFields.etherType);
+        memcpy (pOxmTlv->aValue, &twoByteField,
+                sizeof (matchFields.etherType));
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (matchFields.srcIpAddr != 0)
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        pOxmTlv->field = OFCXMT_OFB_IPV4_SRC << 1;
+        pOxmTlv->length = sizeof (matchFields.srcIpAddr);
+        fourByteField = htonl (matchFields.srcIpAddr);
+        memcpy (pOxmTlv->aValue, &fourByteField,
+                sizeof (matchFields.srcIpAddr));
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (matchFields.dstIpAddr != 0)
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        pOxmTlv->field = OFCXMT_OFB_IPV4_DST << 1;
+        pOxmTlv->length = sizeof (matchFields.dstIpAddr);
+        fourByteField = htonl (matchFields.dstIpAddr);
+        memcpy (pOxmTlv->aValue, &fourByteField,
+                sizeof (matchFields.dstIpAddr));
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (matchFields.protocolType != 0)
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        pOxmTlv->field = OFCXMT_OFB_IP_PROTO << 1;
+        pOxmTlv->length = sizeof (matchFields.protocolType);
+        memcpy (pOxmTlv->aValue, &matchFields.protocolType,
+                sizeof (matchFields.protocolType));
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (matchFields.srcPortNum != 0)
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        switch (matchFields.l4HeaderType)
+        {
+            case OFC_TCP_PROT_TYPE:
+                pOxmTlv->field = OFCXMT_OFB_TCP_SRC << 1;
+                break;
+
+            case OFC_UDP_PROT_TYPE:
+                pOxmTlv->field = OFCXMT_OFB_UDP_SRC << 1;
+                break;
+        }
+        pOxmTlv->length = sizeof (matchFields.srcPortNum);
+        twoByteField = htons (matchFields.srcPortNum);
+        memcpy (pOxmTlv->aValue, &twoByteField,
+                sizeof (matchFields.srcPortNum));
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    if (matchFields.dstPortNum != 0)
+    {
+        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+        switch (matchFields.l4HeaderType)
+        {
+            case OFC_TCP_PROT_TYPE:
+                pOxmTlv->field = OFCXMT_OFB_TCP_DST << 1;
+                break;
+
+            case OFC_UDP_PROT_TYPE:
+                pOxmTlv->field = OFCXMT_OFB_UDP_DST << 1;
+                break;
+        }
+        pOxmTlv->length = sizeof (matchFields.dstPortNum);
+        twoByteField = htons (matchFields.dstPortNum);
+        memcpy (pOxmTlv->aValue, &twoByteField,
+                sizeof (matchFields.dstPortNum));
+        matchTlvLen += oxmTlvLen + pOxmTlv->length;
+        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    }
+
+    /* Add input port in match field TLV OXM fields */
+    pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+    pOxmTlv->field = OFCXMT_OFB_IN_PORT << 1;
+    pOxmTlv->length = sizeof (__u32);
+    fourByteField = inPort;
+    fourByteField = htonl (fourByteField);
+    memcpy (pOxmTlv->aValue, &fourByteField, sizeof(fourByteField));
+    matchTlvLen += oxmTlvLen + pOxmTlv->length;
+    pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+               (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+
+    matchTlvLen += sizeof (pMatchTlv->type) + 
+                   sizeof (pMatchTlv->length);
+    pMatchTlv->length = htons (matchTlvLen);
+
+    /* Add match padding bytes */
+    if (matchTlvLen % 8)
+    {
+        matchTlvLen = (matchTlvLen + 8) - (matchTlvLen % 8);
+    }
+
+    printk (KERN_INFO "Match TLV:\r\n");
+    OfcDumpPacket ((__u8 *) pMatchTlv, matchTlvLen);
+
+    return matchTlvLen;
+}
+
 int ofcCpMultipartFlow (__u8 *pCntrlPkt)
 {
     tOfcFlowTable    *pFlowTable = NULL;
@@ -223,9 +408,11 @@ int ofcCpMultipartFlow (__u8 *pCntrlPkt)
     tOfcFlowEntry    *pFlowEntry = NULL;
     tOfcMatchOxmTlv *oxm = NULL;
     tOfcMatchFields *matchFields = NULL;
+    tOfcMatchTlv *pMatchTlv =  NULL;
     tOfcMultiPartFlowStatsReply *flowStatsReply = NULL;
     tOfcCpMultipartHeader *multipartHeader = NULL;
-    __u16 tlvLen = 0;
+    __u16            matchTlvLen = 0;
+    __u8 *replyPkt = NULL;
     
     tOfcMultipartFlowStats *multiFlowReq = (tOfcMultipartFlowStats *)(pCntrlPkt + 
                                             sizeof(tOfcCpMultipartHeader) +
@@ -243,7 +430,7 @@ int ofcCpMultipartFlow (__u8 *pCntrlPkt)
         memset(matchFields, 0, sizeof(tOfcMatchFields));
         while(oxm->length != 0)
         {
-            if (oxm->class == OFPXMC_OPENFLOW_BASIC)
+            if (oxm->Class == OFPXMC_OPENFLOW_BASIC)
             {
                 switch(oxm->field >> 1)
                 {
@@ -311,17 +498,16 @@ int ofcCpMultipartFlow (__u8 *pCntrlPkt)
     {
         return OFC_FAILURE;
     }
-    memset(multipartHeader, 0, OFC_MTU_SIZE,);
+    memset(multipartHeader, 0, OFC_MTU_SIZE);
     multipartHeader->type = OFPMP_FLOW;
-    tlvLen += sizeof(tOfcCpMultipartHeader);
 
-    list_for_each (pList, pFlowEntryList)
+    list_for_each (pList, &pFlowTable->flowEntryList)
     {
         pFlowEntry = (tOfcFlowEntry *) pList;
 
         // Not the entry being queried for if the cookies dont match.
         if (multiFlowReq->cookie &&
-            ((multiFlowReq->cookie & multiFlowReq->cookieMask) !=
+            ((multiFlowReq->cookie & multiFlowReq->cookie_mask) !=
             (pFlowEntry->cookie & pFlowEntry->cookieMask)))
         {
             continue;
@@ -332,27 +518,55 @@ int ofcCpMultipartFlow (__u8 *pCntrlPkt)
         {
             continue;
         }
-        if (!oxm)
+
+        if (!oxm || memcmp(matchFields, pFlowEntry->matchFields, sizeof(tOfcMatchFields)) == 0)
         {
-            // There is an entry saved. Send it out.
-            if (!flowStatsReply)
+            // There is an existing entry in flow stats reply. Send it out and populate again.
+            if (flowStatsReply)
             {
-                // Send packet out.
+                multipartHeader->flags = OFC_REPLY_MORE;
+                if ((OfcCpAddOpenFlowHdr(multipartHeader, 
+                                         sizeof(tOfcMultiPartHeader) + flowStatsReply->length,
+                                         OFPT_MULTIPART_REPLY,
+                                         ((tOfcOfHdr *)pCntrlPkt)->xid, 
+                                         &replyPkt) != OFC_SUCCESS) || 
+                    (OfcCpSendCntrlPktFromSock(replyPkt, 
+                                               ntohs(((tOfcOfHdr *)replyPkt)->length)) != OFC_SUCCESS))
+                {
+                    return OFC_FAILURE;
+                }
+                kfree(replyPkt);
+                memset(multipartHeader, 0, OFC_MTU_SIZE);
+                multipartHeader->type = OFPMP_FLOW;
+
             }
 
-            // Construct a new one.
-            flowStatsReply = (tOfcMultiPartFlowStatsReply *) kmalloc (sizeof(tOfcMultiPartFlowStatsReply), GFP_KERNEL);
-            memset(flowStatsReply, 0, sizeof(tOfcMultiPartFlowStatsReply));
+            flowStatsReply = (tOfcMultiPartFlowStatsReply *) (multipartHeader + sizeof(tOfcCpMultipartHeader));
             flowStatsReply->byte_count = pFlowEntry->pktMatchCount;
             flowStatsReply->packet_count = pFlowEntry->pktMatchCount;
             flowStatsReply->cookie = pFlowEntry->cookie;
-            flowStatsReply->match.type = htons (OFPMT_OXM);
-            // Generate Oxm fields.
-        }
-        else if ( memcmp(matchFields, pFlowEntry->matchFields, sizeof(tOfcMatchFields)) == 0)
-        {
+            flowStatsReply->table_id = multiFlowReq->table_id;
+            flowStatsReply->priority = pFlowEntry->priority;
+
+            pMatchTlv = (tOfcMatchTlv *) (flowStatsReply + sizeof(tOfcMultiPartFlowStatsReply));
+            matchTlvLen = OfcCpConstructMatch(&pMatchTlv, *matchFields, matchFields->inPort);
+            flowStatsReply->length = matchTlvLen + sizeof(tOfcMultiPartFlowStatsReply);
         }
     }
+
+    if ((OfcCpAddOpenFlowHdr(multipartHeader, 
+                             sizeof(tOfcMultiPartHeader) + flowStatsReply->length,
+                             OFPT_MULTIPART_REPLY,
+                             ((tOfcOfHdr *)pCntrlPkt)->xid, 
+                             &replyPkt) != OFC_SUCCESS) || 
+        (OfcCpSendCntrlPktFromSock(replyPkt, 
+                                   ntohs(((tOfcOfHdr *)replyPkt)->length)) != OFC_SUCCESS))
+    {
+        return OFC_FAILURE;
+    }
+
+    kfree(replyPkt);
+    kfree(multipartHeader);
     return OFC_SUCCESS;
 }
 
@@ -613,7 +827,6 @@ int OfcCpAddOpenFlowHdr (__u8 *pPktHdr, __u16 pktHdrLen,
     return OFC_SUCCESS;
 }
 
-
 /******************************************************************                                                                          
 * Function: OfcCpConstructPacketIn
 *
@@ -635,15 +848,10 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
 {
     tOfcPktInHdr     *pPktInHdr = NULL;
     tOfcMatchTlv     *pMatchTlv = NULL;
-    tOfcMatchOxmTlv  *pOxmTlv = NULL;
-    __u32            fourByteField = 0;
-    __u16            twoByteField = 0;
     __u16            pktInLen = 0;
     __u16            pktInHdrLen = 0;
     __u16            matchTlvLen = 0;
-    __u8             oxmTlvLen = 0;
     __u8             padBytes = 0;
-    __u8             aNullMacAddr[OFC_MAC_ADDR_LEN];
     
     /* Construct match field TLV  */
     pMatchTlv = (tOfcMatchTlv *) kmalloc (OFC_MTU_SIZE, GFP_KERNEL);
@@ -655,175 +863,7 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
     }
     
     memset (pMatchTlv, 0, OFC_MTU_SIZE);
-    memset (aNullMacAddr, 0, sizeof(aNullMacAddr));
-
-    pMatchTlv->type = htons (OFPMT_OXM);
-    pOxmTlv = (tOfcMatchOxmTlv *) (void *) (((__u8 *) pMatchTlv) + 
-                                            sizeof(pMatchTlv->type) + 
-                                            sizeof(pMatchTlv->length));
-    oxmTlvLen = sizeof(pOxmTlv->Class) + sizeof(pOxmTlv->field) +
-                sizeof(pOxmTlv->length);
-    printk (KERN_INFO "oxmTlvLen: %u\r\n", oxmTlvLen);
-
-    /* TODO: Not supporting field mask option */
-    /* Add OXM match field TLVs */
-    if (memcmp (matchFields.aDstMacAddr, aNullMacAddr, 
-                OFC_MAC_ADDR_LEN))
-    {
-        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
-        pOxmTlv->field = OFCXMT_OFB_ETH_DST << 1;
-        pOxmTlv->length = OFC_MAC_ADDR_LEN;
-        memcpy (pOxmTlv->aValue, matchFields.aDstMacAddr, 
-                OFC_MAC_ADDR_LEN);
-        matchTlvLen += oxmTlvLen + pOxmTlv->length;
-        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
-                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
-    }
-
-    if (memcmp (matchFields.aSrcMacAddr, aNullMacAddr, 
-                OFC_MAC_ADDR_LEN))
-    {
-        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
-        pOxmTlv->field = OFCXMT_OFB_ETH_SRC << 1;
-        pOxmTlv->length = OFC_MAC_ADDR_LEN;
-        memcpy (pOxmTlv->aValue, matchFields.aSrcMacAddr, 
-                OFC_MAC_ADDR_LEN);
-        matchTlvLen += oxmTlvLen + pOxmTlv->length;
-        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
-                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
-    }
-
-    if (matchFields.vlanId != 0)
-    {
-        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
-        pOxmTlv->field = OFCXMT_OFB_VLAN_VID << 1;
-        pOxmTlv->length = sizeof (matchFields.vlanId);
-        twoByteField = htons (matchFields.vlanId);
-        memcpy (pOxmTlv->aValue, &twoByteField,
-                sizeof (matchFields.vlanId));
-        matchTlvLen += oxmTlvLen + pOxmTlv->length;
-        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
-                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
-    }
-
-    if (matchFields.etherType != 0)
-    {
-        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
-        pOxmTlv->field = OFCXMT_OFB_ETH_TYPE << 1;
-        pOxmTlv->length = sizeof (matchFields.etherType);
-        twoByteField = htons (matchFields.etherType);
-        memcpy (pOxmTlv->aValue, &twoByteField,
-                sizeof (matchFields.etherType));
-        matchTlvLen += oxmTlvLen + pOxmTlv->length;
-        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
-                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
-    }
-
-    if (matchFields.srcIpAddr != 0)
-    {
-        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
-        pOxmTlv->field = OFCXMT_OFB_IPV4_SRC << 1;
-        pOxmTlv->length = sizeof (matchFields.srcIpAddr);
-        fourByteField = htonl (matchFields.srcIpAddr);
-        memcpy (pOxmTlv->aValue, &fourByteField,
-                sizeof (matchFields.srcIpAddr));
-        matchTlvLen += oxmTlvLen + pOxmTlv->length;
-        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
-                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
-    }
-
-    if (matchFields.dstIpAddr != 0)
-    {
-        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
-        pOxmTlv->field = OFCXMT_OFB_IPV4_DST << 1;
-        pOxmTlv->length = sizeof (matchFields.dstIpAddr);
-        fourByteField = htonl (matchFields.dstIpAddr);
-        memcpy (pOxmTlv->aValue, &fourByteField,
-                sizeof (matchFields.dstIpAddr));
-        matchTlvLen += oxmTlvLen + pOxmTlv->length;
-        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
-                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
-    }
-
-    if (matchFields.protocolType != 0)
-    {
-        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
-        pOxmTlv->field = OFCXMT_OFB_IP_PROTO << 1;
-        pOxmTlv->length = sizeof (matchFields.protocolType);
-        memcpy (pOxmTlv->aValue, &matchFields.protocolType,
-                sizeof (matchFields.protocolType));
-        matchTlvLen += oxmTlvLen + pOxmTlv->length;
-        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
-                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
-    }
-
-    if (matchFields.srcPortNum != 0)
-    {
-        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
-        switch (matchFields.l4HeaderType)
-        {
-            case OFC_TCP_PROT_TYPE:
-                pOxmTlv->field = OFCXMT_OFB_TCP_SRC << 1;
-                break;
-
-            case OFC_UDP_PROT_TYPE:
-                pOxmTlv->field = OFCXMT_OFB_UDP_SRC << 1;
-                break;
-        }
-        pOxmTlv->length = sizeof (matchFields.srcPortNum);
-        twoByteField = htons (matchFields.srcPortNum);
-        memcpy (pOxmTlv->aValue, &twoByteField,
-                sizeof (matchFields.srcPortNum));
-        matchTlvLen += oxmTlvLen + pOxmTlv->length;
-        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
-                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
-    }
-
-    if (matchFields.dstPortNum != 0)
-    {
-        pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
-        switch (matchFields.l4HeaderType)
-        {
-            case OFC_TCP_PROT_TYPE:
-                pOxmTlv->field = OFCXMT_OFB_TCP_DST << 1;
-                break;
-
-            case OFC_UDP_PROT_TYPE:
-                pOxmTlv->field = OFCXMT_OFB_UDP_DST << 1;
-                break;
-        }
-        pOxmTlv->length = sizeof (matchFields.dstPortNum);
-        twoByteField = htons (matchFields.dstPortNum);
-        memcpy (pOxmTlv->aValue, &twoByteField,
-                sizeof (matchFields.dstPortNum));
-        matchTlvLen += oxmTlvLen + pOxmTlv->length;
-        pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
-                  (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
-    }
-
-    /* Add input port in match field TLV OXM fields */
-    pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
-    pOxmTlv->field = OFCXMT_OFB_IN_PORT << 1;
-    pOxmTlv->length = sizeof (__u32);
-    fourByteField = inPort;
-    fourByteField = htonl (fourByteField);
-    memcpy (pOxmTlv->aValue, &fourByteField, sizeof(fourByteField));
-    matchTlvLen += oxmTlvLen + pOxmTlv->length;
-    pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
-               (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
-
-    matchTlvLen += sizeof (pMatchTlv->type) + 
-                   sizeof (pMatchTlv->length);
-    pMatchTlv->length = htons (matchTlvLen);
-
-    /* Add match padding bytes */
-    if (matchTlvLen % 8)
-    {
-        matchTlvLen = (matchTlvLen + 8) - (matchTlvLen % 8);
-    }
-
-    printk (KERN_INFO "Match TLV:\r\n");
-    OfcDumpPacket ((__u8 *) pMatchTlv, matchTlvLen);
+    matchTlvLen = OfcCpConstructMatch( &pMatchTlv, matchFields, inPort);
 
     /* Construct packet-in message */
     pktInLen = sizeof (((tOfcPktInHdr *) 0)->bufId) +

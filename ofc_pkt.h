@@ -129,7 +129,6 @@ typedef struct
     uint64_t cookie;
     uint64_t packet_count;
     uint64_t byte_count;
-    tOfcMatch match;
 } tOfcMultiPartFlowStatsReply;
 
 #endif /* __OFC_PKT_H__ */

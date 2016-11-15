@@ -59,6 +59,6 @@
 #define OFC_DESCR_STRING_LEN 256
 #define OFC_SERIAL_NUM_LEN 32
 
-#define OFC_REPLY_MORE = htons(1)
+#define OFC_REPLY_MORE htons(1)
 
 #endif /* __OFC_DEFN_H__ */
