@@ -14,6 +14,8 @@
 
 tOfcCpGlobals gOfcCpGlobals;
 extern unsigned int gCntrlIpAddr;
+extern char *gpOpenFlowIf[OFC_MAX_OF_IF_NUM];
+extern int  gNumOpenFlowIf;
 
 /******************************************************************                                                                          
 * Function: OfcCpSendHeader
@@ -415,24 +417,27 @@ __u16 OfcCpConstructMatch (tOfcMatchTlv **ppMatchTlv,
 
 int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
 {
-    tOfcMultipartFlowStats      *pFlowStatsReq              = NULL;
-    tOfcFlowTable               *pFlowTable                 = NULL;
-    struct list_head            *pList                      = NULL;
-    tOfcFlowEntry               *pFlowEntry                 = NULL;
-    tOfcMatchOxmTlv             *pRequestOXMTlv             = NULL;
-    tOfcMatchFields             *matchFields                = NULL;
-    tOfcMatchTlv                *pMatchTlv                  = NULL;
-    tOfcMultiPartFlowStatsReply *pFlowStatsReply            = NULL;
-    tOfcCpMultipartHeader       *pMultipartHeader           = NULL;
-    __u8                        *replyPkt                   = NULL;
-    __u16                       matchTlvLen                 = 0;
+    tOfcMultipartFlowStats       *pFlowStatsReq     = NULL;
+    tOfcFlowTable                *pFlowTable        = NULL;
+    struct list_head             *pList             = NULL;
+    tOfcFlowEntry                *pFlowEntry        = NULL;
+    tOfcMatchOxmTlv              *pRequestOXMTlv    = NULL;
+    tOfcMatchFields              *matchFields       = NULL;
+    tOfcMatchTlv                 *pMatchTlv         = NULL;
+    tOfcMultiPartFlowStatsReply  *pFlowStatsReply   = NULL;
+    tOfcCpMultipartHeader        *pMultipartHeader  = NULL;
+    __u8                         *replyPkt          = NULL;
+    __u16                        matchTlvLen        = 0;
 
 
     pFlowStatsReq = (tOfcMultipartFlowStats *)(pCntrlPkt + 
-                   sizeof(tOfcCpMultipartHeader) +
                    sizeof(tOfcCpMultipartHeader));
 
-    pRequestOXMTlv = (tOfcMatchOxmTlv *)((__u8 *)pFlowStatsReq + sizeof(tOfcMultipartFlowStats));
+    // The size of __u16 accounts for the size of type and length of 
+    // Match TLV.
+    pRequestOXMTlv = (tOfcMatchOxmTlv *)((__u8 *)pFlowStatsReq + 
+                      sizeof(tOfcMultipartFlowStats) + 
+                      2*sizeof(__u16));
 
     if (pRequestOXMTlv->length == 0)
     {
@@ -450,46 +455,62 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
                 {
                     case OFCXMT_OFB_IN_PORT:
                     {
-                        memcpy(&(matchFields->inPort), pRequestOXMTlv->aValue, pRequestOXMTlv->length);
+                        memcpy(&(matchFields->inPort), 
+                               pRequestOXMTlv->aValue, 
+                               pRequestOXMTlv->length);
                         break;
                     }
                     case OFCXMT_OFB_ETH_DST:
                     {
-                        memcpy(&(matchFields->aDstMacAddr), pRequestOXMTlv->aValue, pRequestOXMTlv->length);
+                        memcpy(&(matchFields->aDstMacAddr), 
+                               pRequestOXMTlv->aValue, 
+                               pRequestOXMTlv->length);
                         break;
                     }
                     case OFCXMT_OFB_ETH_SRC:
                     {
-                        memcpy(&(matchFields->aSrcMacAddr), pRequestOXMTlv->aValue, pRequestOXMTlv->length);
+                        memcpy(&(matchFields->aSrcMacAddr), 
+                               pRequestOXMTlv->aValue, 
+                               pRequestOXMTlv->length);
                         break;
                     }
                     case OFCXMT_OFB_ETH_TYPE:
                     {
-                        memcpy(&(matchFields->etherType), pRequestOXMTlv->aValue, pRequestOXMTlv->length);
+                        memcpy(&(matchFields->etherType), 
+                               pRequestOXMTlv->aValue, 
+                               pRequestOXMTlv->length);
                         break;
                     }
                     case OFCXMT_OFB_VLAN_VID:
                     {
-                        memcpy(&(matchFields->vlanId), pRequestOXMTlv->aValue, pRequestOXMTlv->length);
+                        memcpy(&(matchFields->vlanId), 
+                               pRequestOXMTlv->aValue, 
+                               pRequestOXMTlv->length);
                         break;
                     }
                     case OFCXMT_OFB_IP_PROTO:
                     {
-                        memcpy(&(matchFields->protocolType), pRequestOXMTlv->aValue, pRequestOXMTlv->length);
+                        memcpy(&(matchFields->protocolType), 
+                               pRequestOXMTlv->aValue, 
+                               pRequestOXMTlv->length);
                         break;
                     }
                     case OFCXMT_OFB_TCP_SRC:
                     case OFCXMT_OFB_UDP_SRC:
                     case OFCXMT_OFB_SCTP_SRC:
                     {
-                        memcpy(&(matchFields->srcPortNum), pRequestOXMTlv->aValue, pRequestOXMTlv->length);
+                        memcpy(&(matchFields->srcPortNum), 
+                               pRequestOXMTlv->aValue, 
+                               pRequestOXMTlv->length);
                         break;
                     }
                     case OFCXMT_OFB_TCP_DST:
                     case OFCXMT_OFB_UDP_DST:
                     case OFCXMT_OFB_SCTP_DST:
                     {
-                        memcpy(&(matchFields->dstPortNum), pRequestOXMTlv->aValue, pRequestOXMTlv->length);
+                        memcpy(&(matchFields->dstPortNum), 
+                               pRequestOXMTlv->aValue, 
+                               pRequestOXMTlv->length);
                         break;
                     }
                     default:
@@ -509,7 +530,7 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
     pMultipartHeader->type = OFPMP_FLOW;
 
     // Get the flow table using the table id received from the request.
-    pFlowTable = OfcDpGetFlowTableEntry (pFlowStatsReq->table_id);
+    pFlowTable = OfcDpGetFlowTableEntry (pFlowStatsReq->tableId);
     if (!pFlowTable)
     {
         printk (KERN_CRIT "Failed to fetch first flow table\r\n");
@@ -523,32 +544,37 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
         // TODO - ADD THIS BACK.
         // Not the entry being queried for if the cookies dont match.
         // if (pFlowStatsReq->cookie &&
-        //     ((pFlowStatsReq->cookie & pFlowStatsReq->cookie_mask) !=
+        //     ((pFlowStatsReq->cookie & pFlowStatsReq->cookieMask) !=
         //     (pFlowEntry->cookie & pFlowEntry->cookieMask)))
         // {
         //     continue;
         // }
 
-        if (pFlowStatsReq->out_port != OFPP_ANY &&
-            pFlowStatsReq->out_port != pFlowEntry->outPort)
+        if (pFlowStatsReq->outPort != OFPP_ANY &&
+            pFlowStatsReq->outPort != pFlowEntry->outPort)
         {
             continue;
         }
 
-        if (!pRequestOXMTlv || memcmp(matchFields, &(pFlowEntry->matchFields), sizeof(tOfcMatchFields)) == 0)
+        if (!pRequestOXMTlv || 
+             memcmp(matchFields, 
+                    &(pFlowEntry->matchFields), 
+                    sizeof(tOfcMatchFields)) == 0)
         {
             // There is an existing entry in flow stats reply. Send it out and populate again.
             if (pFlowStatsReply)
             {
                 pMultipartHeader->flags = OFC_REPLY_MORE;
                 if ((OfcCpAddOpenFlowHdr((__u8 *)pMultipartHeader, 
-                                         sizeof(tOfcCpMultipartHeader) + pFlowStatsReply->length,
+                                         sizeof(tOfcCpMultipartHeader) + 
+                                             pFlowStatsReply->length,
                                          OFPT_MULTIPART_REPLY,
                                          ((tOfcOfHdr *)pCntrlPkt)->xid, 
                                          &replyPkt) != OFC_SUCCESS) || 
                     (OfcCpSendCntrlPktFromSock(replyPkt, 
                                                ntohs(((tOfcOfHdr *)replyPkt)->length)) != OFC_SUCCESS))
                 {
+                    // TODO - printk
                     return OFC_FAILURE;
                 }
                 kfree(replyPkt);
@@ -557,22 +583,28 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
 
             }
 
-            pFlowStatsReply = (tOfcMultiPartFlowStatsReply *) (pMultipartHeader + sizeof(tOfcCpMultipartHeader));
-            pFlowStatsReply->byte_count = pFlowEntry->pktMatchCount;
-            pFlowStatsReply->packet_count = pFlowEntry->pktMatchCount;
+            pFlowStatsReply = (tOfcMultiPartFlowStatsReply *) ((__u8 *)pMultipartHeader + 
+                               sizeof(tOfcCpMultipartHeader));
+            pFlowStatsReply->byteCount = pFlowEntry->pktMatchCount;
+            pFlowStatsReply->packetCount = pFlowEntry->pktMatchCount;
             // TODO - Add this back.
             // pFlowStatsReply->cookie = pFlowEntry->cookie;
-            pFlowStatsReply->table_id = pFlowStatsReq->table_id;
+            pFlowStatsReply->tableId = pFlowStatsReq->tableId;
             pFlowStatsReply->priority = pFlowEntry->priority;
 
-            pMatchTlv = (tOfcMatchTlv *) (pFlowStatsReply + sizeof(tOfcMultiPartFlowStatsReply));
-            matchTlvLen = OfcCpConstructMatch(&pMatchTlv, *matchFields, matchFields->inPort);
-            pFlowStatsReply->length = matchTlvLen + sizeof(tOfcMultiPartFlowStatsReply);
+            pMatchTlv = (tOfcMatchTlv *) ((__u8 *)pFlowStatsReply 
+                               + sizeof(tOfcMultiPartFlowStatsReply));
+            matchTlvLen = OfcCpConstructMatch(&pMatchTlv, 
+                                              pFlowEntry->matchFields, 
+                                              matchFields->inPort);
+            pFlowStatsReply->length = matchTlvLen + 
+                                      sizeof(tOfcMultiPartFlowStatsReply);
         }
     }
 
     if ((OfcCpAddOpenFlowHdr((__u8 *)pMultipartHeader, 
-                             sizeof(tOfcCpMultipartHeader) + pFlowStatsReply->length,
+                             sizeof(tOfcCpMultipartHeader) + 
+                                pFlowStatsReply->length,
                              OFPT_MULTIPART_REPLY,
                              ((tOfcOfHdr *)pCntrlPkt)->xid, 
                              &replyPkt) != OFC_SUCCESS) || 
@@ -584,6 +616,55 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
 
     kfree(replyPkt);
     kfree(pMultipartHeader);
+    return OFC_SUCCESS;
+}
+
+int ofcCpHandleMultipartPortDesc (__u8 *pCntrlPkt)
+{
+    tOfcCpMultipartHeader     *pMultipartHeader     = NULL;
+    tOfcMultiPartPortDescRes  *pMultipartPortDesc   = NULL;
+    __u8                      *replyPkt             = NULL;
+    struct net_device         *netDevice            = NULL;
+    __u32                     lengthForProccessing  = 0;
+    __u32                     pktLength             = 0;
+    int                       dataIfNum             = 0;
+
+
+    pMultipartHeader = (tOfcCpMultipartHeader *) kmalloc (OFC_MTU_SIZE, GFP_KERNEL);
+    if (pMultipartHeader == NULL)
+    {
+        return OFC_FAILURE;
+    }
+    memset(pMultipartHeader, 0, OFC_MTU_SIZE);
+    pMultipartHeader->type = OFPMP_PORT_DESC;
+
+    lengthForProccessing = sizeof(tOfcCpMultipartHeader);
+    pktLength = lengthForProccessing;
+    pMultipartPortDesc = (tOfcMultiPartPortDescRes *)pMultipartHeader;
+
+    for (dataIfNum = 0; dataIfNum < gNumOpenFlowIf; dataIfNum++)
+    {
+        pMultipartPortDesc = (tOfcMultiPartPortDescRes *)((__u8 *)pMultipartPortDesc + lengthForProccessing);
+        pMultipartPortDesc->portNo = htonl(dataIfNum+1);
+        netDevice = OfcGetNetDevByName(gpOpenFlowIf[dataIfNum]);
+        memcpy(pMultipartPortDesc->hwAddr, netDevice->dev_addr, OFC_MAC_ADDR_LEN);
+        strcpy(pMultipartPortDesc->name, gpOpenFlowIf[dataIfNum]);
+        lengthForProccessing = sizeof(tOfcMultiPartPortDescRes);
+        pktLength += lengthForProccessing;
+    }
+
+    if ((OfcCpAddOpenFlowHdr((__u8 *)pMultipartHeader,
+                             pktLength,
+                             OFPT_MULTIPART_REPLY,
+                             ((tOfcOfHdr *)pCntrlPkt)->xid, 
+                             &replyPkt) != OFC_SUCCESS) || 
+        (OfcCpSendCntrlPktFromSock(replyPkt, 
+                                   ntohs(((tOfcOfHdr *)replyPkt)->length)) != OFC_SUCCESS))
+    {
+        return OFC_FAILURE;
+    }
+    kfree(pMultipartHeader);
+    kfree(replyPkt);
     return OFC_SUCCESS;
 }
 
@@ -610,6 +691,10 @@ int OfcCpHandleMultipart (__u8 *pCntrlPkt)
         }
         case OFPMP_PORT_DESC:
         {
+            if (ofcCpHandleMultipartPortDesc(pCntrlPkt) != OFC_SUCCESS)
+            {
+                return OFC_FAILURE;
+            }
         }
         case OFPMP_AGGREGATE:
         case OFPMP_TABLE:

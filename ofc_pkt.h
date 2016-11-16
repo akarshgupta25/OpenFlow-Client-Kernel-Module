@@ -89,46 +89,57 @@ typedef struct
 
 typedef struct
 {
-    char mfcDesc[OFC_DESCR_STRING_LEN];
-    char hwDesc[OFC_DESCR_STRING_LEN];
-    char swDesc[OFC_DESCR_STRING_LEN];
-    char serialNum[OFC_SERIAL_NUM_LEN];
-    char dpDesc[OFC_DESCR_STRING_LEN];
+    char    mfcDesc[OFC_DESCR_STRING_LEN];
+    char    hwDesc[OFC_DESCR_STRING_LEN];
+    char    swDesc[OFC_DESCR_STRING_LEN];
+    char    serialNum[OFC_SERIAL_NUM_LEN];
+    char    dpDesc[OFC_DESCR_STRING_LEN];
 } tOfcMultipartDesc;
-
-typedef struct 
-{
-    uint16_t type;
-    uint16_t length;
-} tOfcMatch;
 
 typedef struct
 {
-    uint8_t table_id;
-    uint8_t pad[3];
-    uint32_t out_port;
-    uint32_t out_group;
-    uint8_t pad2[4];
-    uint64_t cookie;
-    uint64_t cookie_mask;
-    tOfcMatch match;
+    uint8_t     tableId;
+    uint8_t     pad[3];
+    uint32_t    outPort;
+    uint32_t    outGroup;
+    uint8_t     pad2[4];
+    uint64_t    cookie;
+    uint64_t    cookieMask;
 } tOfcMultipartFlowStats;
 
 typedef struct
 {
-    uint16_t length;
-    uint8_t table_id;
-    uint8_t pad;
-    uint32_t duration_sec;
-    uint32_t duration_nsec;
-    uint16_t priority;
-    uint16_t idle_timeout;
-    uint16_t hard_timeout;
-    uint16_t flags;
-    uint8_t pad2[4];
-    uint64_t cookie;
-    uint64_t packet_count;
-    uint64_t byte_count;
+    uint16_t    length;
+    uint8_t     tableId;
+    uint8_t     pad;
+    uint32_t    durationSec;
+    uint32_t    durationNSec;
+    uint16_t    priority;
+    uint16_t    idleTimeout;
+    uint16_t    hardTimeout;
+    uint16_t    flags;
+    uint8_t     pad2[4];
+    uint64_t    cookie;
+    uint64_t    packetCount;
+    uint64_t    byteCount;
 } tOfcMultiPartFlowStatsReply;
+
+typedef struct
+{
+    uint32_t    portNo;
+    uint8_t     pad[4];
+    uint8_t     hwAddr[OFC_MAC_ADDR_LEN];
+    uint8_t     pad2[2];
+    char        name[OFC_MAX_IFNAME_LEN];
+    uint32_t    config;
+    uint32_t    state;
+    uint32_t    curr;
+    uint32_t    advertised;
+    uint32_t    supported;
+    uint32_t    peer;
+    uint32_t    currSpeed;
+    uint32_t    maxSpeed;
+} tOfcMultiPartPortDescRes;
+
 
 #endif /* __OFC_PKT_H__ */
