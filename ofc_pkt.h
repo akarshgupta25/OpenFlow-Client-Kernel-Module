@@ -18,25 +18,6 @@ typedef struct
 
 typedef struct
 {
-    tOfcEightByte datapathId;
-    __u32         numBuffers;
-    __u8          numTables;
-    __u8          auxId;
-    __u8          aPad[2];
-    __u32         flowStats:1;
-    __u32         tableStats:1;
-    __u32         portStats:1;
-    __u32         grpStats:1;
-    __u32         notSupp1:1;
-    __u32         ipReasm:1;
-    __u32         queueStats:1;
-    __u32         notSupp2:1;
-    __u32         portBlocked:1;
-    __u32         reserved;
-} tOfcFeatRply;
-
-typedef struct
-{
     __u8    version; 
     __u8    type;
     __u16   length;
@@ -60,6 +41,48 @@ typedef struct
 
 typedef struct
 {
+    __u16  type;
+    __u16  length;
+} tOfcInstrTlv;
+
+typedef struct
+{
+    __u16  type;
+    __u16  length;
+} tOfcActionTlv;
+
+typedef struct
+{
+     __u8       impDatapathId[2];
+     __u8       macDatapathId[OFC_MAC_ADDR_LEN];
+     __u32      maxBuffers;
+     __u8       maxTables;
+     __u8       auxilaryId;
+     __u8       pad[2];
+     __u32      capabilities;
+     __u32      reserved;
+} tOfcFeatReply;
+
+typedef struct 
+{
+    tOfcEightByte cookie;
+    tOfcEightByte cookieMask;
+    __u8          tableId;
+    __u8          command;
+    __u16         idleTimeout;
+    __u16         hardTimeout;
+    __u16         priority;
+    __u32         bufId;
+    __u32         outPort;
+    __u32         outGrp;
+    __u16         flags;
+    __u8          aPad[2];
+    tOfcMatchTlv  OfpMatch;
+    tOfcInstrTlv  OfpInstr[0];
+} tOfcFlowModHdr;
+
+typedef struct
+{
     __u32         bufId;
     __u16         totLength;
     __u8          reason;
@@ -67,6 +90,14 @@ typedef struct
     tOfcEightByte cookie;
     tOfcMatchTlv  matchTlv;
 } tOfcPktInHdr;
+
+typedef struct
+{
+    __u32     bufId;
+    __u32     inPort;
+    __u16     actionsLen;
+    __u8      aPad[6];
+} tOfcPktOutHdr;
 
 typedef struct
 {
@@ -130,7 +161,7 @@ typedef struct
     uint8_t     pad[4];
     uint8_t     hwAddr[OFC_MAC_ADDR_LEN];
     uint8_t     pad2[2];
-    char        name[OFC_MAX_IFNAME_LEN];
+    char        name[OFC_MAX_PORT_NAME_LEN];
     uint32_t    config;
     uint32_t    state;
     uint32_t    curr;

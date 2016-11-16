@@ -157,6 +157,16 @@ enum
     OFPT_MAX_PKT_TYPE
 };
 
+enum 
+{
+    OFPFC_ADD,
+    OFPFC_MODIFY,
+    OFPFC_MODIFY_STRICT,
+    OFPFC_DELETE,
+    OFPFC_DELETE_STRICT,
+    OFPFC_GET
+};
+
 enum
 {
     OFPC_FLOW_STATS   = 1 << 0,

@@ -98,6 +98,7 @@ int OfcDpMainTask (void *args)
             if (event & OFC_CP_TO_DP_EVENT)
             {
                 /* Process information sent by control path task */
+                OfcDpRxControlPathMsg();
             }
         }
     }
@@ -140,11 +141,87 @@ int OfcDpRxDataPacket (void)
         OfcDpProcessPktOpenFlowPipeline (pDataPkt, pktLen, dataIfNum);
 
         /* Release message */
+        kfree (pDataPkt);
+        pDataPkt = NULL;
         kfree (pMsgQ);
         pMsgQ = NULL;
     }
 
     up (&gOfcDpGlobals.dataPktQSemId);
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcDpRxDataPacket
+*
+* Description: This function receives data packet from OpenFlow
+*              interfaces via raw socket
+*
+* Input: None
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDpRxControlPathMsg (void)
+{
+    tDpCpMsgQ      *pMsgQ = NULL;
+    tOfcFlowEntry  *pFlowEntry = NULL;
+
+    down_interruptible (&gOfcDpGlobals.cpMsgQSemId);
+
+    while ((pMsgQ = OfcDpRecvFromCpMsgQ()) != NULL)
+    {
+        switch (pMsgQ->msgType)
+        {
+            case OFC_FLOW_MOD_ADD:
+                pFlowEntry = pMsgQ->pFlowEntry;
+                if (pFlowEntry == NULL)
+                {
+                    printk (KERN_CRIT "Data path did not receive flow " 
+                                      "entry from control path\r\n");
+                    kfree (pMsgQ);
+                    pMsgQ = NULL;
+                    continue;
+                }
+
+                OfcDpInsertFlowEntry (pFlowEntry);
+                break;
+
+            case OFC_FLOW_MOD_DEL:
+                pFlowEntry = pMsgQ->pFlowEntry;
+                if (pFlowEntry == NULL)
+                {   
+                    printk (KERN_CRIT "Data path did not receive flow "
+                                      "entry from control path\r\n");
+                    kfree (pMsgQ);
+                    pMsgQ = NULL;
+                    continue;
+                }
+
+                OfcDpDeleteFlowEntry (pFlowEntry);
+                break;
+
+            case OFC_PACKET_OUT:
+                OfcDpExecPktOutActions (pMsgQ->pPkt, pMsgQ->pktLen,
+                                        pMsgQ->pActionListHead);
+                break;
+
+            default:
+                printk (KERN_CRIT "Invalid message received from "
+                                  "control path task\r\n");
+                break;
+        }
+
+        /* Release message */
+        kfree (pMsgQ);
+        pMsgQ = NULL;
+    }
+    OfcDumpFlows(0);
+
+    up (&gOfcDpGlobals.cpMsgQSemId);
 
     return OFC_SUCCESS;
 }
@@ -207,6 +284,7 @@ int OfcDpCreateFlowTables (void)
         INIT_LIST_HEAD (&pTableMissFlow->list);
         pTableMissFlow->priority = OFC_MIN_FLOW_PRIORITY;
         pTableMissFlow->tableId = pFlowTable->tableId;
+        pTableMissFlow->bufId = OFC_NO_BUFFER;
         INIT_LIST_HEAD (&pTableMissFlow->matchList);
         INIT_LIST_HEAD (&pTableMissFlow->instrList);
 
@@ -271,6 +349,7 @@ int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen,
     tOfcFlowEntry   *pMatchFlow = NULL;
     tDpCpMsgQ       msgQ;
     tOfcMatchFields pktMatchFields;
+    __u8            *pDataPkt = NULL;
     __u8            maxOutPorts = OFC_MAX_FLOW_TABLES * 
                                   (gNumOpenFlowIf + OFPP_NUM);
     __u32           aOutPortList[maxOutPorts];
@@ -343,8 +422,20 @@ int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen,
             /* Send packet-in to controller */
             /* This is done by sending the packet to control
              * path task */
+            pDataPkt = (__u8 *) kmalloc (pktLen, GFP_KERNEL);
+            if (pDataPkt == NULL)
+            {
+                printk (KERN_CRIT "[%s]: Failed to allocate memory to "
+                                  "data packet\r\n", __func__);
+                continue;
+            }
+            memset (pDataPkt, 0, pktLen);
+            memcpy (pDataPkt, pPkt, pktLen);
             memset (&msgQ, 0, sizeof(msgQ));
+#if 0
             msgQ.pPkt = pPkt;
+#endif
+            msgQ.pPkt = pDataPkt;
             msgQ.pktLen = pktLen;
             /* Port n in switch corresponds to port n+1 for controller */
             msgQ.inPort = inPort + 1;
@@ -363,8 +454,6 @@ int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen,
                         sizeof(msgQ.cookie));
             }
 
-            /* TODO: Convert matchlist to match TLV 
-             * (Do be done at control path task) */
             OfcDpSendToCpQ (&msgQ);
             OfcCpSendEvent (OFC_DP_TO_CP_EVENT);
         }
@@ -507,6 +596,12 @@ tOfcFlowEntry *OfcDpGetBestMatchFlow (tOfcMatchFields pktMatchFields,
 
         if (pFlowEntry->matchFields.srcPortNum != 0)
         {
+            /* Check for L4 protocol type */
+            if (pFlowEntry->matchFields.l4HeaderType != 
+                pktMatchFields.protocolType)
+            {
+                continue;
+            }
             /* Match L4 source port number */
             if (pFlowEntry->matchFields.srcPortNum !=
                 pktMatchFields.srcPortNum)
@@ -517,6 +612,12 @@ tOfcFlowEntry *OfcDpGetBestMatchFlow (tOfcMatchFields pktMatchFields,
 
         if (pFlowEntry->matchFields.dstPortNum != 0)
         {
+            /* Check for L4 protocol type */
+            if (pFlowEntry->matchFields.l4HeaderType != 
+                pktMatchFields.protocolType)
+            {
+                continue;
+            }
             /* Match L4 destination port number */
             if (pFlowEntry->matchFields.dstPortNum !=
                 pktMatchFields.dstPortNum)
@@ -592,6 +693,7 @@ int OfcDpExecuteFlowInstr (__u8 *pPkt, __u32 pktLen, __u8 inPort,
                                         pNumOutPorts);
                 break;
 
+            /* TODO: These instructions */
             case OFCIT_CLEAR_ACTIONS:
                 break;
 
@@ -644,11 +746,215 @@ int OfcDpApplyInstrActions (__u8 *pPkt, __u32 pktLen, __u8 inPort,
                 *pNumOutPorts = numPorts;
                 break;
 
+            /* TODO: Set Fields action */
             default:
                 printk (KERN_CRIT "Unsupported action!!\r\n");
                 return OFC_FAILURE;
         }
     }
 
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcDpInsertFlowEntry
+*
+* Description: This function inserts flow entry in flow table
+*
+* Input: pFlowEntry - Pointer to flow entry
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDpInsertFlowEntry (tOfcFlowEntry *pFlowEntry)
+{
+    tOfcFlowTable     *pFlowTable = NULL;
+    tOfcFlowEntry     *pFlowEntryParser = NULL;
+    struct list_head  *pList = NULL;
+    __u8              tableId = 0;
+
+    tableId = pFlowEntry->tableId;
+    pFlowTable = OfcDpGetFlowTableEntry (tableId);
+    if (pFlowTable == NULL)
+    {
+        printk (KERN_CRIT "Invalid flow table Id in flow entry\r\n");
+        kfree (pFlowEntry);
+        pFlowEntry = NULL;
+        return OFC_FAILURE;
+    }
+
+    /* Entries are inserted in decreasing order of priorities i.e.
+     * flow entries with greater priorities are inserted ahead of
+     * flow entries with lower priorities. If two flows have
+     * equal priority then the new flow is inserted ahead of the
+     * older flow */
+    list_for_each (pList, &pFlowTable->flowEntryList)
+    {
+        pFlowEntryParser = (tOfcFlowEntry *) pList;
+
+        if (pFlowEntry->priority < pFlowEntryParser->priority)
+        {
+            continue;
+        }
+
+        printk (KERN_INFO "[%s]: Inserting entry in flow table\r\n",
+                           __func__);
+        /* Insert new flow before this flow entry */
+        INIT_LIST_HEAD (&pFlowEntry->list);
+        list_add_tail (&pFlowEntry->list, &pFlowEntryParser->list);
+        break;
+    }
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcDpDeleteFlowEntry
+*
+* Description: This function deletes flow entry from flow table
+*
+* Input: pFlowEntry - Pointer to flow entry
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDpDeleteFlowEntry (tOfcFlowEntry *pFlowEntry)
+{
+    tOfcFlowTable     *pFlowTable = NULL;
+    tOfcFlowEntry     *pFlowEntryParser = NULL;
+    tOfcInstrList     *pInstrList = NULL;
+    struct list_head  *pList = NULL;
+    struct list_head  *pList2 = NULL;
+    __u8              tableId = 0;
+
+    tableId = pFlowEntry->tableId;
+    pFlowTable = OfcDpGetFlowTableEntry (tableId);
+    if (pFlowTable == NULL)
+    {
+        printk (KERN_CRIT "Invalid flow table Id in flow entry\r\n");
+        kfree (pFlowEntry);
+        pFlowEntry = NULL;
+        return OFC_FAILURE;
+    }
+
+    list_for_each (pList, &pFlowTable->flowEntryList)
+    {
+        pFlowEntryParser = (tOfcFlowEntry *) pList;
+
+        if (memcmp (pFlowEntry, pFlowEntryParser, 
+                    sizeof (tOfcFlowEntry)))
+        {
+            continue;
+        }
+
+        /* Flow entry found, delete it */
+        list_del_init (pList);
+        list_for_each (pList2, 
+                       &pFlowEntryParser->instrList)
+        {
+            pInstrList = (tOfcInstrList *) pList2;
+            OfcDeleteList (&pInstrList->u.actionList);
+        }
+        OfcDeleteList (&pFlowEntryParser->instrList);
+        OfcDeleteList (&pFlowEntryParser->matchList);
+        kfree (pFlowEntryParser);
+        pFlowEntryParser = NULL;
+        list_for_each (pList2, &pFlowEntry->instrList)
+        {
+            pInstrList = (tOfcInstrList *) pList2;
+            OfcDeleteList (&pInstrList->u.actionList);
+        }
+        OfcDeleteList (&pFlowEntry->instrList);
+        OfcDeleteList (&pFlowEntry->matchList);
+        kfree (pFlowEntry);
+        pFlowEntry = NULL;
+        break;
+    }
+
+    return OFC_SUCCESS;
+}
+/******************************************************************                                                                          
+* Function: OfcDpExecPktOutActions
+*
+* Description: This function executes actions specified in the
+*              packet-out message
+*
+* Input: pPkt - Pointer to data packet
+*        pktLen - Length of packet
+*        pActionsListHead - Actions list head
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDpExecPktOutActions (__u8 *pPkt, __u16 pktLen,
+                            struct list_head *pActionsListHead)
+{
+    __u8    maxOutPorts = OFC_MAX_FLOW_TABLES *
+                          (gNumOpenFlowIf + OFPP_NUM);
+    __u32   outPort = 0;
+    __u32   aOutPortList[maxOutPorts];
+    __u8    numOutPorts = 0;
+    __u8    portIndex = 0;
+    __u8    dataIfNum = 0;
+
+    if ((pPkt == NULL) || (pActionsListHead == NULL))
+    {
+        printk (KERN_CRIT "[%s]: Invalid inputs\r\n", __func__);
+        return OFC_FAILURE;
+    }
+
+    memset (aOutPortList, 0, sizeof (aOutPortList));
+    if (OfcDpApplyInstrActions (pPkt, pktLen, 0,
+                                pActionsListHead, aOutPortList,
+                                &numOutPorts)
+        != OFC_SUCCESS)
+    {
+        OfcDeleteList (pActionsListHead);
+        kfree (pActionsListHead);
+        pActionsListHead = NULL;
+        kfree (pPkt);
+        pPkt = NULL;
+        return OFC_FAILURE;
+    }
+
+    for (portIndex = 0; portIndex < numOutPorts; portIndex++)
+    {
+        outPort = aOutPortList[portIndex];
+        if ((outPort == OFPP_CONTROLLER) || 
+            (outPort == OFPP_NORMAL) || 
+            (outPort == OFPP_LOCAL) ||
+            (outPort == OFPP_FLOOD) ||
+            (outPort == OFPP_IN_PORT))
+        {
+            continue;
+        }
+
+        if (outPort == OFPP_ALL)
+        {
+            /* Send packet through all OpenFlow ports */
+            for (dataIfNum = 0; dataIfNum < gNumOpenFlowIf; 
+                 dataIfNum++)
+            {
+                OfcDpSendDataPktOnSock (dataIfNum, pPkt, pktLen);
+            }
+        }
+        else
+        {
+            /* Output port n corresponds to dataIfNum n-1 */
+            OfcDpSendDataPktOnSock (outPort - 1, pPkt, pktLen);
+        }
+    }
+    
+    OfcDeleteList (pActionsListHead);
+    kfree (pActionsListHead);
+    pActionsListHead = NULL;
+    kfree (pPkt);
+    pPkt = NULL;
     return OFC_SUCCESS;
 }

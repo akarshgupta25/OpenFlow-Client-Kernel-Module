@@ -40,14 +40,15 @@ unsigned int OfcNetFilterPreRouteHook (const struct nf_hook_ops *ops,
                                        const struct net_device *out,
                                        int (*okfn)(struct sk_buff*))
 {
-    struct iphdr *iph = NULL;
-    int          dataIfNum = 0;
+    struct iphdr  *iph = NULL;
+    int           dataIfNum = 0;
 
     /* Check whether data packet has been received */
     for (dataIfNum = 0; dataIfNum < gNumOpenFlowIf; dataIfNum++)
     {
         if (!strcmp (in->name, gpOpenFlowIf[dataIfNum]))
         {
+            #if 0
             /* Packet rx on OpenFlow interface, notify data path
              * task */
             down_interruptible (&gOfcDpGlobals.dataPktQSemId);
@@ -55,6 +56,8 @@ unsigned int OfcNetFilterPreRouteHook (const struct nf_hook_ops *ops,
             up (&gOfcDpGlobals.dataPktQSemId);
             OfcDpSendEvent (OFC_PKT_RX_EVENT);
             return NF_STOLEN;
+            #endif
+            return NF_ACCEPT;
         }
     }
 
@@ -65,7 +68,17 @@ unsigned int OfcNetFilterPreRouteHook (const struct nf_hook_ops *ops,
         if ((iph != NULL) && 
             (gCntrlIpAddr == (ntohl (iph->saddr))))
         {
-            OfcCpSendEvent (OFC_CTRL_PKT_EVENT);
+            /* Packet received from controller. Send event
+             * to control path task only if it is an
+             * OpenFlow packet i.e. TCP packet consisting
+             * of some payload. The control path task
+             * will validate whether payload is OpenFlow
+             * packet or not */
+            if (ntohs (iph->tot_len) != 
+                OFC_HEADER_OFFSET_FROM_IP)
+            {
+                OfcCpSendEvent (OFC_CTRL_PKT_EVENT);
+            }
         }
     }
     
@@ -83,21 +96,6 @@ static int OfcMainInit (void)
 
     return OFC_SUCCESS;
 }
-
-#if 0
-static int OfcMainTask (void *args)
-{
-                memset (&msg, 0, sizeof(msg));
-                memset (&iov, 0, sizeof(iov));
-                iov.iov_base = buffer;
-                iov.iov_len = msgLen;
-                msg.msg_iov = &iov;
-                msg.msg_iovlen = 1;
-                msgLen = sock_sendmsg (socket2, &msg, msgLen);
-                set_fs(old_fs);
-                printk (KERN_INFO "Packet Tx on socket (len:%d)\r\n", msgLen);
-}
-#endif
 
 static int __init OpenFlowClientStart (void)
 {
@@ -137,6 +135,7 @@ static int __init OpenFlowClientStart (void)
     }
 
     /* Spawn OpenFlow data path task */
+    #if 0
     gOfcGlobals.pOfcDpThread = kthread_run (OfcDpMainTask, NULL, 
                                             OFC_DP_TASK_NAME);
     if (!gOfcGlobals.pOfcDpThread)
@@ -146,14 +145,19 @@ static int __init OpenFlowClientStart (void)
         kthread_stop (gOfcGlobals.pOfcCpThread);
 	    return OFC_FAILURE;
     }
+    #endif
+
     return OFC_SUCCESS;
 }
 
 static void __exit OpenFlowClientStop (void)
 {
+    /* TODO: Release all data sockets */
+    #if 0
     kthread_stop (gOfcGlobals.pOfcDpThread);
+    #endif
+    sock_release (gOfcCpGlobals.pCntrlSocket);
     kthread_stop (gOfcGlobals.pOfcCpThread);
-    sock_release(gOfcCpGlobals.pCntrlSocket);
     nf_unregister_hook (&gOfcGlobals.netFilterOps);
     printk (KERN_INFO "Openflow Client Stopped!!\r\n");
 }

@@ -37,28 +37,32 @@
 
 #define OFC_MAX_FLOW_TABLES   2
 #define OFC_MAX_FLOW_ENTRIES  20
-#define OFC_MIN_FLOW_PRIORITY 1
+#define OFC_MIN_FLOW_PRIORITY 0
 #define OFC_FIRST_TABLE_INDEX 0
-#define OFC_MAX_PKT_BUFFER    htonl(0x111)
 
-#define OFC_MAC_ADDR_LEN        6
-#define OFC_IP_PROT_TYPE_OFFSET 9
-#define OFC_IP_SRC_IP_OFFSET    12
-#define OFC_IP_DST_IP_OFFSET    16
+#define OFC_MAC_ADDR_LEN          6
+#define OFC_IP_PROT_TYPE_OFFSET   9
+#define OFC_IP_SRC_IP_OFFSET      12
+#define OFC_IP_DST_IP_OFFSET      16
+#define OFC_MATCH_TLV_OFFSET      40
+#define OFC_HEADER_OFFSET_FROM_IP 52
+#define OFC_MAX_PORT_NAME_LEN     16
 
 #define OFC_IP_ETHTYPE     0x0800
 #define OFC_TCP_PROT_TYPE  0x06
 #define OFC_UDP_PROT_TYPE  0x11
 
-#define OFC_OPENFLOW_HDR_LEN    8
-#define OFC_VERSION             0x04
-#define OFC_INIT_TRANSACTION_ID 0x01
-#define OFC_NO_BUFFER           0xffffffff
+#define OFC_OPENFLOW_HDR_LEN     8
+#define OFC_VERSION              0x04
+#define OFC_INIT_TRANSACTION_ID  0x01
+#define OFC_NO_BUFFER            0xffffffff
+#define OFC_MAX_PKT_BUFFER       0x111
 #define OFC_CTRL_MAIN_CONNECTION 0x0
 
 #define OFC_DESCR_STRING_LEN 256
 #define OFC_SERIAL_NUM_LEN 32
 
 #define OFC_REPLY_MORE htons(1)
+
 
 #endif /* __OFC_DEFN_H__ */
