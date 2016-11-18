@@ -410,8 +410,8 @@ int OfcCpSendFeatureReply (__u8 *pCntrlPkt)
         return OFC_FAILURE;
     }
 
-    //dev = OfcGetNetDevByIp (gCntrlIpAddr);
-    dev = OfcGetNetDevByName ("eth1");
+    dev = OfcGetNetDevByIp (gCntrlIpAddr);
+    //dev = OfcGetNetDevByName ("eth1");
     if (!dev)
     {
         printk (KERN_CRIT "Failed to retrieve interface for "
