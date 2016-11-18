@@ -424,6 +424,7 @@ int OfcCpSendFeatureReply (__u8 *pCntrlPkt)
     memset (pResponseMsg, 0, sizeof (tOfcFeatReply));
     memcpy (pResponseMsg->macDatapathId, dev->dev_addr, 
             OFC_MAC_ADDR_LEN);
+    //pResponseMsg->macDatapathId[OFC_MAC_ADDR_LEN-1] = 1;
     pResponseMsg->maxBuffers = htonl (OFC_MAX_PKT_BUFFER);
     pResponseMsg->maxTables  = OFC_MAX_FLOW_TABLES;
     pResponseMsg->auxilaryId = OFC_CTRL_MAIN_CONNECTION;
@@ -1575,7 +1576,7 @@ int ofcCpHandleMultipartSwitchDesc (__u8 *pCntrlPkt)
     strcpy(pReplyDesc->serialNum, serialNum);
     strcpy(pReplyDesc->dpDesc, dpDesc);
 
-    if ((OfcCpAddOpenFlowHdr((__u8 *)pReplyDesc,
+    if ((OfcCpAddOpenFlowHdr((__u8 *)pMultipartHeader,
                              tlvLength,
                              OFPT_MULTIPART_REPLY,
                              ((tOfcOfHdr *)pCntrlPkt)->xid, 
@@ -1988,7 +1989,6 @@ int ofcCpHandleMultipartPortDesc (__u8 *pCntrlPkt)
     __u32                     lengthForProccessing  = 0;
     __u32                     pktLength             = 0;
     int                       dataIfNum             = 0;
-    struct ethtool_cmd        cmd;
 
     pMultipartHeader = (tOfcCpMultipartHeader *) kmalloc (OFC_MTU_SIZE, GFP_KERNEL);
     if (pMultipartHeader == NULL)
@@ -2013,25 +2013,12 @@ int ofcCpHandleMultipartPortDesc (__u8 *pCntrlPkt)
         netDevice = OfcGetNetDevByName(gpOpenFlowIf[dataIfNum]);
         memcpy(pMultipartPortDesc->hwAddr, netDevice->dev_addr, OFC_MAC_ADDR_LEN);
         strcpy(pMultipartPortDesc->name, gpOpenFlowIf[dataIfNum]);
+
         if (!netif_carrier_ok(netDevice))
         {
             pMultipartPortDesc->state = htons(OFPPS_LINK_DOWN);
         }
 
-
-        printk (KERN_INFO "TEST BEFORE \n");
-        if (!netDevice->ethtool_ops)
-        {
-            printk (KERN_INFO "FAIL 1\n");
-        }
-        else
-        {
-            cmd.cmd = ETHTOOL_GSET;
-            netDevice->ethtool_ops->get_settings(netDevice, &cmd);
-            printk(KERN_INFO "SUCC %d \n", ethtool_cmd_speed(&cmd));
-        }
-        printk (KERN_INFO "TEST AFTER \n");
-        
         lengthForProccessing = sizeof(tOfcMultiPartPortDescRes);
         pktLength += lengthForProccessing;
     }

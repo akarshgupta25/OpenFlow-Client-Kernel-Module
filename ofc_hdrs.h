@@ -26,8 +26,6 @@
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <linux/inetdevice.h>
-#include <linux/phy.h>
-#include <linux/ethtool.h>
 
 #include "ofc_defn.h"
 #include "ofc_pkt.h"
