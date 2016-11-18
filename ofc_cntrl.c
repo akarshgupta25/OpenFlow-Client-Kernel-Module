@@ -1492,6 +1492,57 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
 }
 #endif
 
+int OfcCpHandleMultipart (__u8 *pCntrlPkt)
+{
+    tOfcCpMultipartHeader *request = (tOfcCpMultipartHeader *)(pCntrlPkt + 
+                                      sizeof(tOfcOfHdr));
+    switch(ntohs(request->type))
+    {
+        case OFPMP_DESC:
+        {
+            if (ofcCpHandleMultipartSwitchDesc(pCntrlPkt) != OFC_SUCCESS)
+            {
+                return OFC_FAILURE;
+            }
+            break;
+        }
+        case OFPMP_FLOW:
+        {
+            if (ofcCpHandleMultipartFlowStats(pCntrlPkt) != OFC_SUCCESS)
+            {
+                return OFC_FAILURE;
+            }
+            break;
+        }
+        case OFPMP_PORT_DESC:
+        {
+            if (ofcCpHandleMultipartPortDesc(pCntrlPkt) != OFC_SUCCESS)
+            {
+                printk ("Failed to Send the Multipart Port Desc Reply\n");
+                return OFC_FAILURE;
+            }
+        }
+        case OFPMP_AGGREGATE:
+        case OFPMP_TABLE:
+        case OFPMP_PORT_STATS:
+        case OFPMP_QUEUE:
+        case OFPMP_GROUP:
+        case OFPMP_GROUP_DESC:
+        case OFPMP_GROUP_FEATURES:
+        case OFPMP_METER:
+        case OFPMP_METER_CONFIG:
+        case OFPMP_METER_FEATURES:
+        case OFPMP_TABLE_FEATURES:
+        case OFPMP_EXPERIMENTER:
+        default:
+            printk(KERN_INFO "The Multipart Type is not currently supported \n");
+            return OFC_FAILURE;
+
+    }
+
+    return OFC_SUCCESS;
+}
+
 int ofcCpHandleMultipartSwitchDesc (__u8 *pCntrlPkt)
 {
     char                       hwDesc[]          = "Test Hardware";
@@ -1937,6 +1988,7 @@ int ofcCpHandleMultipartPortDesc (__u8 *pCntrlPkt)
     __u32                     lengthForProccessing  = 0;
     __u32                     pktLength             = 0;
     int                       dataIfNum             = 0;
+    struct ethtool_cmd        cmd;
 
     pMultipartHeader = (tOfcCpMultipartHeader *) kmalloc (OFC_MTU_SIZE, GFP_KERNEL);
     if (pMultipartHeader == NULL)
@@ -1954,7 +2006,6 @@ int ofcCpHandleMultipartPortDesc (__u8 *pCntrlPkt)
     // The pointer will be placed in the correct location inside the loop.
     pMultipartPortDesc = (tOfcMultiPartPortDescRes *)pMultipartHeader;
 
-    printk (KERN_INFO "SIZE 1 %d", pktLength);
     for (dataIfNum = 0; dataIfNum < gNumOpenFlowIf; dataIfNum++)
     {
         pMultipartPortDesc = (tOfcMultiPartPortDescRes *)((__u8 *)pMultipartPortDesc + lengthForProccessing);
@@ -1962,9 +2013,27 @@ int ofcCpHandleMultipartPortDesc (__u8 *pCntrlPkt)
         netDevice = OfcGetNetDevByName(gpOpenFlowIf[dataIfNum]);
         memcpy(pMultipartPortDesc->hwAddr, netDevice->dev_addr, OFC_MAC_ADDR_LEN);
         strcpy(pMultipartPortDesc->name, gpOpenFlowIf[dataIfNum]);
+        if (!netif_carrier_ok(netDevice))
+        {
+            pMultipartPortDesc->state = htons(OFPPS_LINK_DOWN);
+        }
+
+
+        printk (KERN_INFO "TEST BEFORE \n");
+        if (!netDevice->ethtool_ops)
+        {
+            printk (KERN_INFO "FAIL 1\n");
+        }
+        else
+        {
+            cmd.cmd = ETHTOOL_GSET;
+            netDevice->ethtool_ops->get_settings(netDevice, &cmd);
+            printk(KERN_INFO "SUCC %d \n", ethtool_cmd_speed(&cmd));
+        }
+        printk (KERN_INFO "TEST AFTER \n");
+        
         lengthForProccessing = sizeof(tOfcMultiPartPortDescRes);
         pktLength += lengthForProccessing;
-        printk (KERN_INFO "SIZE 2 %d", pktLength);
     }
 
     if ((OfcCpAddOpenFlowHdr((__u8 *)pMultipartHeader,
@@ -1982,58 +2051,3 @@ int ofcCpHandleMultipartPortDesc (__u8 *pCntrlPkt)
     kfree(replyPkt);
     return OFC_SUCCESS;
 }
-
-int OfcCpHandleMultipart (__u8 *pCntrlPkt)
-{
-    tOfcCpMultipartHeader *request = (tOfcCpMultipartHeader *)(pCntrlPkt + 
-                                      sizeof(tOfcOfHdr));
-    printk(KERN_INFO "TEST - INSIDE MUlti ONE %d %d %d \n", 
-             request->type, ntohs(request->type), OFPMP_PORT_DESC);
-    switch(ntohs(request->type))
-    {
-        case OFPMP_DESC:
-        {
-            if (ofcCpHandleMultipartSwitchDesc(pCntrlPkt) != OFC_SUCCESS)
-            {
-                return OFC_FAILURE;
-            }
-            break;
-        }
-        case OFPMP_FLOW:
-        {
-            if (ofcCpHandleMultipartFlowStats(pCntrlPkt) != OFC_SUCCESS)
-            {
-                return OFC_FAILURE;
-            }
-            break;
-        }
-        case OFPMP_PORT_DESC:
-        {
-            if (ofcCpHandleMultipartPortDesc(pCntrlPkt) != OFC_SUCCESS)
-            {
-                printk ("Failed to Send the Multipart Port Desc Reply\n");
-                return OFC_FAILURE;
-            }
-        }
-        case OFPMP_AGGREGATE:
-        case OFPMP_TABLE:
-        case OFPMP_PORT_STATS:
-        case OFPMP_QUEUE:
-        case OFPMP_GROUP:
-        case OFPMP_GROUP_DESC:
-        case OFPMP_GROUP_FEATURES:
-        case OFPMP_METER:
-        case OFPMP_METER_CONFIG:
-        case OFPMP_METER_FEATURES:
-        case OFPMP_TABLE_FEATURES:
-        case OFPMP_EXPERIMENTER:
-        default:
-            printk(KERN_INFO "The Multipart Type is not currently supported \n");
-            return OFC_FAILURE;
-
-    }
-
-    return OFC_SUCCESS;
-}
-
-

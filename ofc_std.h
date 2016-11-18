@@ -198,4 +198,12 @@ enum
     OFPMP_EXPERIMENTER    =  0xffff
 };
 
+enum
+{
+    OFPPS_LINK_DOWN = 1 << 0,
+    OFPPS_BLOCKED   = 1 << 1,
+    OFPPS_LIVE      = 1 << 2
+};
+    
+
 #endif /* __OFC_STD_H__ */
