@@ -1792,6 +1792,7 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
 
 
     pFlowStatsReq = (tOfcMultipartFlowStats *)(pCntrlPkt + 
+                   sizeof(tOfcOfHdr) +
                    sizeof(tOfcCpMultipartHeader));
 
     // The size of __u16 accounts for the size of type and length of 
@@ -1803,6 +1804,7 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
     if (pRequestOXMTlv->length == 0)
     {
         pRequestOXMTlv = NULL;
+        printk(" wrong %d \n", pFlowStatsReq->outPort);
     }
     else
     {
@@ -1955,6 +1957,15 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
 
             pMatchTlv = (tOfcMatchTlv *) ((__u8 *)pFlowStatsReply 
                                + sizeof(tOfcMultiPartFlowStatsReply));
+
+            if (!pFlowEntry)
+            {
+                printk("Empty Flow Entry \n");
+            }
+            if (!matchFields)
+            {
+                printk("Empty Match Fields\n");
+            }
             matchTlvLen = OfcCpConstructMatch(&pMatchTlv, 
                                               pFlowEntry->matchFields, 
                                               matchFields->inPort);

@@ -48,7 +48,6 @@ unsigned int OfcNetFilterPreRouteHook (const struct nf_hook_ops *ops,
     {
         if (!strcmp (in->name, gpOpenFlowIf[dataIfNum]))
         {
-            #if 0
             /* Packet rx on OpenFlow interface, notify data path
              * task */
             down_interruptible (&gOfcDpGlobals.dataPktQSemId);
@@ -56,8 +55,6 @@ unsigned int OfcNetFilterPreRouteHook (const struct nf_hook_ops *ops,
             up (&gOfcDpGlobals.dataPktQSemId);
             OfcDpSendEvent (OFC_PKT_RX_EVENT);
             return NF_STOLEN;
-            #endif
-            return NF_ACCEPT;
         }
     }
 
@@ -135,7 +132,6 @@ static int __init OpenFlowClientStart (void)
     }
 
     /* Spawn OpenFlow data path task */
-    #if 0
     gOfcGlobals.pOfcDpThread = kthread_run (OfcDpMainTask, NULL, 
                                             OFC_DP_TASK_NAME);
     if (!gOfcGlobals.pOfcDpThread)
@@ -145,7 +141,6 @@ static int __init OpenFlowClientStart (void)
         kthread_stop (gOfcGlobals.pOfcCpThread);
 	    return OFC_FAILURE;
     }
-    #endif
 
     return OFC_SUCCESS;
 }
@@ -153,9 +148,7 @@ static int __init OpenFlowClientStart (void)
 static void __exit OpenFlowClientStop (void)
 {
     /* TODO: Release all data sockets */
-    #if 0
     kthread_stop (gOfcGlobals.pOfcDpThread);
-    #endif
     sock_release (gOfcCpGlobals.pCntrlSocket);
     kthread_stop (gOfcGlobals.pOfcCpThread);
     nf_unregister_hook (&gOfcGlobals.netFilterOps);
