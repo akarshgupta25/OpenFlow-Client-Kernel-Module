@@ -68,7 +68,7 @@ typedef struct _tOfcEightByte
 
 typedef struct
 {
-    __u16  inPort;
+    __u32  inPort;
     __u8   aDstMacAddr[OFC_MAC_ADDR_LEN];
     __u8   aSrcMacAddr[OFC_MAC_ADDR_LEN];
     __u16  vlanId;
@@ -79,6 +79,7 @@ typedef struct
     __u16  srcPortNum;
     __u16  dstPortNum;
     __u8   l4HeaderType;
+    __u8   pad[5]; // To make the size of struct a multiple of 64.
 } tOfcMatchFields;
 
 typedef struct
@@ -110,6 +111,7 @@ typedef struct
     __u32              outGrp;
     __u32              tableId;
     __u32              matchCount;
+    struct timespec    addTime;
     struct list_head   matchList;
     struct list_head   instrList;
     tOfcMatchFields    matchFields;

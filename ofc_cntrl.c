@@ -976,6 +976,7 @@ tOfcFlowEntry *OfcCpExtractFlow (tOfcFlowModHdr *pFlowMod,
     pFlowEntry->outPort = ntohl (pFlowMod->outPort);
     pFlowEntry->outGrp = ntohl (pFlowMod->outGrp);
     pFlowEntry->flags = ntohs (pFlowMod->flags);
+    getnstimeofday(&(pFlowEntry->addTime));
     INIT_LIST_HEAD (&pFlowEntry->matchList);
     INIT_LIST_HEAD (&pFlowEntry->instrList);
     
@@ -1792,6 +1793,7 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
     __u8                         *replyPkt          = NULL;
     __u16                        matchTlvLen        = 0;
     __u8                         tableId            = 0;
+    struct timespec              currentTime;
 
 
     pFlowStatsReq = (tOfcMultipartFlowStats *)(pCntrlPkt + 
@@ -1824,7 +1826,13 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
                         memcpy(&(matchFields->inPort), 
                                pRequestOXMTlv->aValue, 
                                pRequestOXMTlv->length);
-                        printk("value set \n");
+                        matchFields->inPort = htonl(matchFields->inPort);
+                        printk("value set  %d %d %d %d %d %d \n", matchFields->inPort,
+                             pRequestOXMTlv->length,
+                             *pRequestOXMTlv->aValue,
+                             *(pRequestOXMTlv->aValue+1),
+                             *(pRequestOXMTlv->aValue+2),
+                             *(pRequestOXMTlv->aValue+3));
                         break;
                     }
                     case OFCXMT_OFB_ETH_DST:
@@ -1921,14 +1929,12 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
             //     continue;
             // }
 
-            printk(" OUT PORT %d \n", pFlowEntry->outPort);
             if (pFlowStatsReq->outPort != OFPP_ANY &&
                 pFlowStatsReq->outPort != pFlowEntry->outPort)
             {
                 continue;
             }
 
-            printk ("Inside \n");
             if (!pRequestOXMTlv || 
                  memcmp(matchFields, 
                         &(pFlowEntry->matchFields), 
@@ -1951,7 +1957,6 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
                         // TODO - printk
                         return OFC_FAILURE;
                     }
-                    printk("INSIDE \n");
                     kfree(replyPkt);
                     memset(pMultipartHeader, 0, OFC_MTU_SIZE);
                     pMultipartHeader->type = htons(OFPMP_FLOW);
@@ -1962,6 +1967,9 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
                                    sizeof(tOfcCpMultipartHeader));
                 pFlowStatsReply->byteCount = pFlowEntry->pktMatchCount;
                 pFlowStatsReply->packetCount = pFlowEntry->pktMatchCount;
+                getnstimeofday(&currentTime);
+                pFlowStatsReply->durationSec  = htonl(currentTime.tv_sec -  pFlowEntry->addTime.tv_sec);
+                pFlowStatsReply->durationNSec = htonl(currentTime.tv_nsec - pFlowEntry->addTime.tv_nsec);
                 // TODO - Add this back.
                 // pFlowStatsReply->cookie = pFlowEntry->cookie;
                 pFlowStatsReply->tableId = pFlowStatsReq->tableId;
@@ -1970,14 +1978,6 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
                 pMatchTlv = (tOfcMatchTlv *) ((__u8 *)pFlowStatsReply 
                                    + sizeof(tOfcMultiPartFlowStatsReply));
 
-                if (!pFlowEntry)
-                {
-                    printk("Empty Flow Entry \n");
-                }
-                if (!matchFields)
-                {
-                    printk("Empty Match Fields\n");
-                }
                 matchTlvLen = OfcCpConstructMatch(&pMatchTlv, 
                                                   pFlowEntry->matchFields, 
                                                   matchFields->inPort);
@@ -1993,13 +1993,12 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
         tableId++;
     }
 
-    printk("newtest2 \n");
-    
-    if (!pMultipartHeader)
-        printk("header fail\n");
-
+    // There were no matches.
     if (!pFlowStatsReply)
+    {
         printk("flow stats fail \n");
+        return OFC_FAILURE;
+    }
 
     if ((OfcCpAddOpenFlowHdr((__u8 *)pMultipartHeader, 
                              sizeof(tOfcCpMultipartHeader) + 
@@ -2012,7 +2011,6 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
     {
         return OFC_FAILURE;
     }
-    printk("newtest1 \n");
 
     kfree(replyPkt);
     kfree(pMultipartHeader);
