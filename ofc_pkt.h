@@ -129,30 +129,30 @@ typedef struct
 
 typedef struct
 {
-    uint8_t     tableId;
-    uint8_t     pad[3];
-    uint32_t    outPort;
-    uint32_t    outGroup;
-    uint8_t     pad2[4];
-    uint64_t    cookie;
-    uint64_t    cookieMask;
+    uint8_t          tableId;
+    uint8_t          pad[3];
+    uint32_t         outPort;
+    uint32_t         outGroup;
+    uint8_t          pad2[4];
+    tOfcEightByte    cookie;
+    tOfcEightByte    cookieMask;
 } tOfcMultipartFlowStats;
 
 typedef struct
 {
-    uint16_t    length;
-    uint8_t     tableId;
-    uint8_t     pad;
-    uint32_t    durationSec;
-    uint32_t    durationNSec;
-    uint16_t    priority;
-    uint16_t    idleTimeout;
-    uint16_t    hardTimeout;
-    uint16_t    flags;
-    uint8_t     pad2[4];
-    uint64_t    cookie;
-    uint64_t    packetCount;
-    uint64_t    byteCount;
+    uint16_t         length;
+    uint8_t          tableId;
+    uint8_t          pad;
+    uint32_t         durationSec;
+    uint32_t         durationNSec;
+    uint16_t         priority;
+    uint16_t         idleTimeout;
+    uint16_t         hardTimeout;
+    uint16_t         flags;
+    uint8_t          pad2[4];
+    tOfcEightByte    cookie;
+    uint64_t         packetCount;
+    uint64_t         byteCount;
 } tOfcMultiPartFlowStatsReply;
 
 typedef struct
