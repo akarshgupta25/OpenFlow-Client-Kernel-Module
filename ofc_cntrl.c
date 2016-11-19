@@ -1944,10 +1944,11 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
                 // There is an existing entry in flow stats reply. Send it out and populate again.
                 if (pFlowStatsReply)
                 {
+                    printk("test 1 \n");
                     pMultipartHeader->flags = OFC_REPLY_MORE;
                     if ((OfcCpAddOpenFlowHdr((__u8 *)pMultipartHeader, 
                                              sizeof(tOfcCpMultipartHeader) + 
-                                                 pFlowStatsReply->length,
+                                                 ntohs(pFlowStatsReply->length),
                                              OFPT_MULTIPART_REPLY,
                                              ((tOfcOfHdr *)pCntrlPkt)->xid, 
                                              &replyPkt) != OFC_SUCCESS) || 
@@ -1960,6 +1961,7 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
                     kfree(replyPkt);
                     memset(pMultipartHeader, 0, OFC_MTU_SIZE);
                     pMultipartHeader->type = htons(OFPMP_FLOW);
+                    printk("test 2 \n");
 
                 }
 
@@ -1978,11 +1980,14 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
                 pMatchTlv = (tOfcMatchTlv *) ((__u8 *)pFlowStatsReply 
                                    + sizeof(tOfcMultiPartFlowStatsReply));
 
+                printk("test 3 \n");
                 matchTlvLen = OfcCpConstructMatch(&pMatchTlv, 
                                                   pFlowEntry->matchFields, 
-                                                  matchFields->inPort);
-                pFlowStatsReply->length = matchTlvLen + 
-                                          sizeof(tOfcMultiPartFlowStatsReply);
+                                                  pFlowEntry->matchFields.inPort);
+                printk("test 14 \n");
+                pFlowStatsReply->length = htons(matchTlvLen + 
+                                          sizeof(tOfcMultiPartFlowStatsReply));
+                printk("test 4 \n");
             }
         }
 
@@ -2002,7 +2007,7 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
 
     if ((OfcCpAddOpenFlowHdr((__u8 *)pMultipartHeader, 
                              sizeof(tOfcCpMultipartHeader) + 
-                                pFlowStatsReply->length,
+                                ntohs(pFlowStatsReply->length),
                              OFPT_MULTIPART_REPLY,
                              ((tOfcOfHdr *)pCntrlPkt)->xid, 
                              &replyPkt) != OFC_SUCCESS) || 
