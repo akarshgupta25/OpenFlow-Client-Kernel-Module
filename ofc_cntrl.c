@@ -1435,6 +1435,28 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
     memset (pMatchTlv, 0, OFC_MTU_SIZE);
     matchTlvLen = OfcCpConstructMatch( &pMatchTlv, matchFields, inPort);
 
+    pOxmTlv = (tOfcMatchOxmTlv *) ((__u8 *)pMatchTlv + matchTlvLen);
+    pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+    pOxmTlv->field = OFCXMT_OFB_IN_PORT << 1;
+    pOxmTlv->length = sizeof (__u32);
+    fourByteField = inPort;
+    fourByteField = htonl (fourByteField);
+    memcpy (pOxmTlv->aValue, &fourByteField, sizeof(fourByteField));
+    matchTlvLen += pOxmTlv->length + 
+                   sizeof(pOxmTlv->Class) + 
+                   sizeof(pOxmTlv->field) +
+                   sizeof(pOxmTlv->length);
+
+    matchTlvLen += sizeof (pMatchTlv->type) + 
+                   sizeof (pMatchTlv->length);
+    pMatchTlv->length = htons (matchTlvLen);
+
+    /* Add match padding bytes */
+    if (matchTlvLen % 8)
+    {
+        matchTlvLen = (matchTlvLen + 8) - (matchTlvLen % 8);
+    }
+
     /* Construct packet-in message */
     pktInLen = sizeof (((tOfcPktInHdr *) 0)->bufId) +
                sizeof (((tOfcPktInHdr *) 0)->totLength) +
@@ -1751,28 +1773,30 @@ __u16 OfcCpConstructMatch (tOfcMatchTlv **ppMatchTlv,
                   (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
     }
 
+    // IMP - IT IS THE REPONSIBILITY OF THE CALLER OF THE FUNCTION
+    // TO ADD PORT AND PADDING.
     /* Add input port in match field TLV OXM fields */
-    pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
-    pOxmTlv->field = OFCXMT_OFB_IN_PORT << 1;
-    pOxmTlv->length = sizeof (__u32);
-    fourByteField = inPort;
-    fourByteField = htonl (fourByteField);
-    memcpy (pOxmTlv->aValue, &fourByteField, sizeof(fourByteField));
-    matchTlvLen += oxmTlvLen + pOxmTlv->length;
-    pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
-               (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
+    //pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+    //pOxmTlv->field = OFCXMT_OFB_IN_PORT << 1;
+    //pOxmTlv->length = sizeof (__u32);
+    //fourByteField = inPort;
+    //fourByteField = htonl (fourByteField);
+    //memcpy (pOxmTlv->aValue, &fourByteField, sizeof(fourByteField));
+    //matchTlvLen += oxmTlvLen + pOxmTlv->length;
+    //pOxmTlv = (tOfcMatchOxmTlv *) (void *) 
+    //           (((__u8 *) pOxmTlv) + oxmTlvLen + pOxmTlv->length);
 
-    matchTlvLen += sizeof (pMatchTlv->type) + 
-                   sizeof (pMatchTlv->length);
-    pMatchTlv->length = htons (matchTlvLen);
+    //matchTlvLen += sizeof (pMatchTlv->type) + 
+    //               sizeof (pMatchTlv->length);
+    //pMatchTlv->length = htons (matchTlvLen);
 
-    /* Add match padding bytes */
-    if (matchTlvLen % 8)
-    {
-        matchTlvLen = (matchTlvLen + 8) - (matchTlvLen % 8);
-    }
+    ///* Add match padding bytes */
+    //if (matchTlvLen % 8)
+    //{
+    //    matchTlvLen = (matchTlvLen + 8) - (matchTlvLen % 8);
+    //}
 
-    printk (KERN_INFO "Match TLV:\r\n");
+    //printk (KERN_INFO "Match TLV:\r\n");
     OfcDumpPacket ((__u8 *) pMatchTlv, matchTlvLen);
 
     return matchTlvLen;
@@ -1792,6 +1816,8 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
     __u8                         *replyPkt          = NULL;
     __u16                        matchTlvLen        = 0;
     __u8                         tableId            = 0;
+    __u32                        fourByteField      = 0;
+    tOfcMatchOxmTlv              *pOxmTlv           = NULL;
     struct timespec              currentTime;
 
 
@@ -2006,6 +2032,48 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
                 matchTlvLen = OfcCpConstructMatch(&pMatchTlv, 
                                                   pFlowEntry->matchFields, 
                                                   pFlowEntry->matchFields.inPort);
+                
+                if (pFlowEntry->matchFields.inPort)
+                {
+                    if (matchTlvLen)
+                    {
+                        printk("Got some matches \n");
+                        pOxmTlv = (tOfcMatchOxmTlv *) ((__u8 *)pMatchTlv +
+                                    sizeof(pMatchTlv->type) +
+                                    sizeof(pMatchTlv->length) +
+                                    matchTlvLen);
+                    }
+                    else
+                    {
+                        printk("No matches yet \n");
+                        pOxmTlv = (tOfcMatchOxmTlv *) ((__u8 *)pMatchTlv +
+                                    sizeof(pMatchTlv->type) +
+                                    sizeof(pMatchTlv->length) +
+                                    matchTlvLen);
+                    }
+                    pOxmTlv->Class = htons (OFPXMC_OPENFLOW_BASIC);
+                    pOxmTlv->field = OFCXMT_OFB_IN_PORT << 1;
+                    pOxmTlv->length = sizeof (__u32);
+                    fourByteField = pFlowEntry->matchFields.inPort;
+                    fourByteField = htonl (fourByteField);
+                    memcpy (pOxmTlv->aValue, &fourByteField, sizeof(fourByteField));
+                    matchTlvLen += sizeof(pOxmTlv->Class) + 
+                                   sizeof(pOxmTlv->field) + 
+                                   sizeof(pOxmTlv->length) + 
+                                   pOxmTlv->length;
+
+                }
+                matchTlvLen += sizeof (pMatchTlv->type) + 
+                               sizeof (pMatchTlv->length);
+                pMatchTlv->length = htons (matchTlvLen);
+
+                /* Add match padding bytes */
+                if (matchTlvLen % 8)
+                {
+                    matchTlvLen = (matchTlvLen + 8) - (matchTlvLen % 8);
+                }
+
+
                 pFlowStatsReply->length = htons(matchTlvLen + 
                                           sizeof(tOfcMultiPartFlowStatsReply));
             }
