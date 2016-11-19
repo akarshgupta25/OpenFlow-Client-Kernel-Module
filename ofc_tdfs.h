@@ -231,6 +231,7 @@ int OfcCpAddOpenFlowHdr (__u8 *pPktHdr, __u16 pktHdrLen,
                          __u8 msgType, __u32 xid,
                          __u8 **ppOfPkt);
 int OfcCpSendHelloPacket (__u32 xid);
+int OfcCpSendEchoReply (__u8 *pCntrlPkt, __u16 cntrlPktLen);
 int OfcCpSendFeatureReply (__u8 *pCntrlPkt);
 int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
                             __u8 msgType, __u8 tableId,
@@ -249,5 +250,10 @@ int OfcCpAddInstrListInFlow (tOfcFlowModHdr *pFlowMod,
 int OfcCpAddActionListToInstr (tOfcActionTlv *pActionTlv,
                                __u16 actionTlvLen,
                                tOfcInstrList *pInstrList);
+int OfcCpProcessMultipartReq (__u8 *pCntrlPkt, __u16 cntrlPktLen);
+int OfcCpHandleMultipartSwitchDesc (__u8 *pCntrlPkt,
+                                    __u16 cntrlPktLen);
+int OfcCpHandleMultipartPortDesc (__u8 *pCntrlPkt, __u16 cntrlPktLen);
+int OfcCpSendBarrierReply (__u32 xid);
 
 #endif /* __OFC_TDFS_H__ */

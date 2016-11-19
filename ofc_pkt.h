@@ -99,4 +99,37 @@ typedef struct
     __u8      aPad[6];
 } tOfcPktOutHdr;
 
+typedef struct
+{
+    __u16  type;
+    __u16  flags;
+    __u8   pad[4];
+} tOfcMultipartHeader;
+
+typedef struct
+{
+    char    mfcDesc[OFC_DESCR_STRING_LEN];
+    char    hwDesc[OFC_DESCR_STRING_LEN];
+    char    swDesc[OFC_DESCR_STRING_LEN];
+    char    serialNum[OFC_SERIAL_NUM_LEN];
+    char    dpDesc[OFC_DESCR_STRING_LEN];
+} tOfcMultipartSwDesc;
+
+typedef struct
+{
+    __u32    portNo;
+    __u8     pad[4];
+    __u8     hwAddr[OFC_MAC_ADDR_LEN];
+    __u8     pad2[2];
+    char     ifName[OFC_MAX_IFNAME_LEN];
+    __u32    config;
+    __u32    state;
+    __u32    curr;
+    __u32    advertised;
+    __u32    supported;
+    __u32    peer;
+    __u32    currSpeed;
+    __u32    maxSpeed;
+} tOfcMultipartPortDesc;
+
 #endif /* __OFC_PKT_H__ */

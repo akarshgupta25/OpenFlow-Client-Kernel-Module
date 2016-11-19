@@ -14,6 +14,8 @@
 
 tOfcCpGlobals gOfcCpGlobals;
 extern unsigned int gCntrlIpAddr;
+extern char *gpOpenFlowIf[OFC_MAX_OF_IF_NUM];
+extern int  gNumOpenFlowIf;
 
 /******************************************************************                                                                          
 * Function: OfcCpMainInit
@@ -172,6 +174,7 @@ int OfcCpRxControlPacket (void)
                 break;
 
             case OFPT_ECHO_REQUEST:
+                OfcCpSendEchoReply (pCntrlPkt, cntrlPktLen);
                 break;
 
             case OFPT_ECHO_REPLY:
@@ -202,9 +205,11 @@ int OfcCpRxControlPacket (void)
                 break;
 
             case OFPT_MULTIPART_REQUEST:
+                OfcCpProcessMultipartReq (pCntrlPkt, cntrlPktLen);
                 break;
 
             case OFPT_BARRIER_REQUEST:
+                OfcCpSendBarrierReply (pOfHdr->xid);
                 break;
 
             default:
@@ -365,13 +370,65 @@ int OfcCpSendHelloPacket (__u32 xid)
         != OFC_SUCCESS)
     {
         printk (KERN_CRIT "Failed to send Hello packet\r\n");
-        kfree(pHelloPkt);
+        kfree (pHelloPkt);
         pHelloPkt = NULL;
         return OFC_FAILURE;
     }
 
-    kfree(pHelloPkt);
+    kfree (pHelloPkt);
     pHelloPkt = NULL;
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpSendEchoReply
+*
+* Description: This function sends echo reply message to the
+*              controller.
+*
+* Input: pCntrlPkt - Pointer to control packet (Barrier Request)
+*        cntrlPktLen - Control packet length
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpSendEchoReply (__u8 *pCntrlPkt, __u16 cntrlPktLen)
+{
+    __u8   *pBarrierReply = NULL;
+    __u8   *pData = NULL;
+    __u32  xid = 0;
+    __u16  dataLen = 0;
+
+    dataLen = ntohs (((tOfcOfHdr *) pCntrlPkt)->length) - 
+              OFC_OPENFLOW_HDR_LEN;
+    if (dataLen != 0)
+    {
+        pData = pCntrlPkt + OFC_OPENFLOW_HDR_LEN;
+    }
+
+    xid = ((tOfcOfHdr *) pCntrlPkt)->xid;
+    if (OfcCpAddOpenFlowHdr (pData, dataLen, OFPT_ECHO_REPLY, xid, 
+                             &pBarrierReply)
+        != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "Failed to construct Echo Reply\r\n");
+        return OFC_FAILURE;
+    }
+
+    if (OfcCpSendCntrlPktFromSock (pBarrierReply, 
+                                   OFC_OPENFLOW_HDR_LEN + dataLen)
+        != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "Failed to send Echo Reply\r\n");
+        kfree (pBarrierReply);
+        pBarrierReply = NULL;
+        return OFC_FAILURE;
+    }
+
+    kfree (pBarrierReply);
+    pBarrierReply = NULL;
     return OFC_SUCCESS;
 }
 
@@ -1386,3 +1443,313 @@ int OfcCpAddActionListToInstr (tOfcActionTlv *pActionTlv,
 
     return OFC_SUCCESS;
 }
+
+/******************************************************************                                                                          
+* Function: OfcCpProcessMultipartReq
+*
+* Description: This function processes multicast request packet
+*              and sends appropriate reply
+*
+* Input: pPkt - Pointer to Multipart Request packet
+*        pktLen - Multipart Request packet length
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpProcessMultipartReq (__u8 *pCntrlPkt, __u16 cntrlPktLen)
+{
+    tOfcMultipartHeader *pMultReq = NULL;
+
+    pMultReq = (tOfcMultipartHeader *)(pCntrlPkt + 
+                                       OFC_OPENFLOW_HDR_LEN);
+
+    switch (ntohs (pMultReq->type))
+    {
+        case OFPMP_DESC:
+        {
+            if (OfcCpHandleMultipartSwitchDesc (pCntrlPkt, cntrlPktLen) 
+                != OFC_SUCCESS)
+            {
+                printk (KERN_CRIT "Failed to send Multipart Switch"
+                                  " Desc Reply\r\n");
+                return OFC_FAILURE;
+            }
+            break;
+        }
+
+        case OFPMP_FLOW:
+        {
+#if 0
+            if (ofcCpHandleMultipartFlowStats(pCntrlPkt) != OFC_SUCCESS)
+            {
+                return OFC_FAILURE;
+            }
+#endif
+            break;
+        }
+
+        case OFPMP_PORT_DESC:
+        {
+            if (OfcCpHandleMultipartPortDesc (pCntrlPkt, cntrlPktLen) 
+                != OFC_SUCCESS)
+            {
+                printk (KERN_CRIT "Failed to send Multipart Port" 
+                                  " Desc Reply\r\n");
+                return OFC_FAILURE;
+            }
+
+            break;
+        }
+
+        case OFPMP_AGGREGATE:
+        case OFPMP_TABLE:
+        case OFPMP_PORT_STATS:
+        case OFPMP_QUEUE:
+        case OFPMP_GROUP:
+        case OFPMP_GROUP_DESC:
+        case OFPMP_GROUP_FEATURES:
+        case OFPMP_METER:
+        case OFPMP_METER_CONFIG:
+        case OFPMP_METER_FEATURES:
+        case OFPMP_TABLE_FEATURES:
+        case OFPMP_EXPERIMENTER:
+        default:
+            printk(KERN_INFO "The Multipart Type is not currently supported \n");
+            return OFC_FAILURE;
+
+    }
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpHandleMultipartSwitchDesc
+*
+* Description: This function handles multipart request for
+*              switch description, and sends description of
+*              OpenFlow client kernel module.
+*
+* Input: pCntrlPkt - Pointer to Multipart Request packet
+*        cntrlPktLen - Multipart Request packet length
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpHandleMultipartSwitchDesc (__u8 *pCntrlPkt, 
+                                    __u16 cntrlPktLen)
+{
+    tOfcMultipartHeader  *pMultipartHeader  = NULL;
+    tOfcMultipartSwDesc  *pMultipartSwDesc = NULL;
+    __u8                 *pOpenFlowPkt = NULL;
+    __u16                descLen = 0;
+
+    descLen = sizeof (tOfcMultipartHeader) + 
+              sizeof (tOfcMultipartSwDesc);
+    pMultipartHeader = (tOfcMultipartHeader *) kmalloc (descLen,
+                                                        GFP_KERNEL);
+    if (pMultipartHeader == NULL)
+    {
+        printk (KERN_CRIT "Failed to allocate memory to Multipart"
+                " Switch Desc message\r\n");
+        return OFC_FAILURE;
+    }
+
+    memset(pMultipartHeader, 0, descLen);
+    pMultipartHeader->type = htons(OFPMP_DESC);
+
+    pMultipartSwDesc = (tOfcMultipartSwDesc *) (void *)
+                       (((__u8 *) pMultipartHeader) +
+                        sizeof (tOfcMultipartHeader));
+
+    strcpy (pMultipartSwDesc->mfcDesc, OFC_MNF_DESC);
+    strcpy (pMultipartSwDesc->hwDesc, OFC_HW_DESC);
+    strcpy (pMultipartSwDesc->swDesc, OFC_SW_DESC);
+    strcpy (pMultipartSwDesc->serialNum, OFC_SERIAL_NUM);
+    strcpy (pMultipartSwDesc->dpDesc, OFC_DATAPATH_DESC);
+
+    if (OfcCpAddOpenFlowHdr ((__u8 *) pMultipartHeader,
+                             descLen, OFPT_MULTIPART_REPLY,
+                             ((tOfcOfHdr *) pCntrlPkt)->xid, 
+                             &pOpenFlowPkt) != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "Failed to construct multipart switch "
+                          "description message\r\n");
+        kfree (pMultipartHeader);
+        pMultipartHeader = NULL;
+        return OFC_FAILURE;
+    }
+
+    if (OfcCpSendCntrlPktFromSock (pOpenFlowPkt, 
+        ntohs (((tOfcOfHdr *) pOpenFlowPkt)->length)) 
+        != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "Failed to send multipart switch "
+                          "description message\r\n");
+        kfree (pMultipartHeader);
+        pMultipartHeader = NULL;
+        kfree (pOpenFlowPkt);
+        pOpenFlowPkt = NULL;
+        return OFC_FAILURE;
+    }
+
+    kfree (pMultipartHeader);
+    pMultipartHeader = NULL;
+    kfree (pOpenFlowPkt);
+    pOpenFlowPkt = NULL;
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpHandleMultipartPortDesc
+*
+* Description: This function handles multipart request
+*              for port description, and sends description of all
+*              OpenFlow ports present in the kernel module.
+*
+* Input: pCntrlPkt - Pointer to Multipart Request packet
+*        cntrlPktLen - Multipart Request packet length
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpHandleMultipartPortDesc (__u8 *pCntrlPkt, __u16 cntrlPktLen)
+{
+    tOfcMultipartHeader    *pMultipartHeader     = NULL;
+    tOfcMultipartPortDesc  *pMultipartPortDesc   = NULL;
+    struct net_device      *pNetDevice           = NULL;
+    __u8                   *pOpenFlowPkt         = NULL;
+    __u32                  pktLength             = 0;
+    int                    dataIfNum             = 0;
+
+    pMultipartHeader = (tOfcMultipartHeader *) kmalloc (OFC_MTU_SIZE, 
+                                                        GFP_KERNEL);
+    if (pMultipartHeader == NULL)
+    {
+        printk(KERN_INFO "Failed to allocate memory for multipart"
+               " port desc message\r\n");
+        return OFC_FAILURE;
+    }
+
+    memset (pMultipartHeader, 0, OFC_MTU_SIZE);
+    pktLength = sizeof (tOfcMultipartHeader);
+    pMultipartHeader->type = htons (OFPMP_PORT_DESC);
+
+    pMultipartPortDesc = (tOfcMultipartPortDesc *) (void *) 
+                         (((__u8 *) pMultipartHeader) + 
+                          sizeof (tOfcMultipartHeader));
+
+    for (dataIfNum = 0; dataIfNum < gNumOpenFlowIf; dataIfNum++)
+    {
+        pNetDevice = OfcGetNetDevByName (gpOpenFlowIf[dataIfNum]);
+        if (pNetDevice == NULL)
+        {
+            printk (KERN_CRIT "[%s]: Failed to fetch OpenFlow "
+                              "interface name\r\n", __func__);
+            continue;
+        }
+
+        /* Port n corresponds to n+1 in controller */
+        pMultipartPortDesc->portNo = htonl (dataIfNum + 1);
+        memcpy (pMultipartPortDesc->hwAddr, pNetDevice->dev_addr, 
+                OFC_MAC_ADDR_LEN);
+        strcpy (pMultipartPortDesc->ifName, 
+                gpOpenFlowIf[dataIfNum]);
+
+        if (!netif_carrier_ok (pNetDevice))
+        {
+            pMultipartPortDesc->state |= OFPPS_LINK_DOWN;
+        }
+        else
+        {
+            pMultipartPortDesc->state &= (~(OFPPS_LINK_DOWN));
+        }
+        pMultipartPortDesc->state = htonl (pMultipartPortDesc->state);
+
+        /* Not updating state, current, advertised, supported,
+         * curr speed, max speed because data interfaces are
+         * virtual interfaces in ExoGeni that do not store
+         * speed information in ethtool */
+
+        pktLength += sizeof (tOfcMultipartPortDesc);
+        pMultipartPortDesc = (tOfcMultipartPortDesc *) (void *)
+                             (((__u8 *) pMultipartPortDesc) +
+                              sizeof (tOfcMultipartPortDesc));
+    }
+
+    if (OfcCpAddOpenFlowHdr ((__u8 *) pMultipartHeader,
+                             pktLength, OFPT_MULTIPART_REPLY,
+                             ((tOfcOfHdr *) pCntrlPkt)->xid, 
+                             &pOpenFlowPkt) != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "Failed to construct multipart port "
+                          "description message\r\n");
+        kfree (pMultipartHeader);
+        pMultipartHeader = NULL;
+        return OFC_FAILURE;
+    }
+
+    if (OfcCpSendCntrlPktFromSock (pOpenFlowPkt, 
+        ntohs (((tOfcOfHdr *) pOpenFlowPkt)->length)) 
+        != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "Failed to send multipart port "
+                          "description message\r\n");
+        kfree (pMultipartHeader);
+        pMultipartHeader = NULL;
+        kfree (pOpenFlowPkt);
+        pOpenFlowPkt = NULL;
+        return OFC_FAILURE;
+    }
+
+    kfree (pMultipartHeader);
+    pMultipartHeader = NULL;
+    kfree (pOpenFlowPkt);
+    pOpenFlowPkt = NULL;
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCpSendBarrierReply
+*
+* Description: This function sends barrier reply message to the
+*              controller.
+*
+* Input: xid - Transaction ID.
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCpSendBarrierReply (__u32 xid)
+{
+    __u8  *pBarrierReply = NULL;
+
+    if (OfcCpAddOpenFlowHdr (NULL, 0, OFPT_BARRIER_REPLY, xid, 
+                             &pBarrierReply)
+        != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "Failed to construct Barrier Reply\r\n");
+        return OFC_FAILURE;
+    }
+
+    if (OfcCpSendCntrlPktFromSock (pBarrierReply, OFC_OPENFLOW_HDR_LEN)
+        != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "Failed to send Barrier Reply\r\n");
+        kfree (pBarrierReply);
+        pBarrierReply = NULL;
+        return OFC_FAILURE;
+    }
+
+    kfree (pBarrierReply);
+    pBarrierReply = NULL;
+    return OFC_SUCCESS;
+}
+

@@ -21,7 +21,7 @@
 #define OFC_DP_TASK_NAME       "OpenFlowDataPath"
 #define OFC_CP_TASK_NAME       "OpenFlowControlPath"
 #define OFC_MAX_OF_IF_NUM      10
-#define OFC_MAX_IFNAME_LEN     10
+#define OFC_MAX_IFNAME_LEN     16
 #define OFC_MAX_DATA_SOCK      10
 #define OFC_MTU_SIZE           1500
 #define OFC_L2_HDR_LEN         18
@@ -57,5 +57,13 @@
 #define OFC_NO_BUFFER            0xffffffff
 #define OFC_MAX_PKT_BUFFER       0x111
 #define OFC_CTRL_MAIN_CONNECTION 0x0
+
+#define OFC_DESCR_STRING_LEN     256
+#define OFC_SERIAL_NUM_LEN       32
+#define OFC_HW_DESC              "Test Hardware"
+#define OFC_SW_DESC              "OpenFlow 1.3 Version"
+#define OFC_MNF_DESC             "Test Manufacturer"
+#define OFC_SERIAL_NUM           "11 11 11 11 11 11"
+#define OFC_DATAPATH_DESC        "Test OpenFlow Switch"
 
 #endif /* __OFC_DEFN_H__ */

@@ -178,4 +178,29 @@ enum
     OFPC_PORT_BLOCKED = 1 << 8 
 };
 
+enum 
+{
+    OFPMP_DESC            = 0,
+    OFPMP_FLOW            = 1,
+    OFPMP_AGGREGATE       = 2,
+    OFPMP_TABLE           = 3,
+    OFPMP_PORT_STATS      = 4,
+    OFPMP_QUEUE           = 5,
+    OFPMP_GROUP           = 6,
+    OFPMP_GROUP_DESC      = 7,
+    OFPMP_GROUP_FEATURES  = 8,
+    OFPMP_METER           = 9,
+    OFPMP_METER_CONFIG    = 10,
+    OFPMP_METER_FEATURES  = 11,
+    OFPMP_TABLE_FEATURES  = 12,
+    OFPMP_PORT_DESC       = 13,
+    OFPMP_EXPERIMENTER    = 0xffff
+};
+
+enum {
+    OFPPS_LINK_DOWN = 1 << 0,
+    OFPPS_BLOCKED   = 1 << 1,
+    OFPPS_LIVE      = 1 << 2
+};
+
 #endif /* __OFC_STD_H__ */
