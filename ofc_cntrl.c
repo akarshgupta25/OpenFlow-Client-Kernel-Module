@@ -312,6 +312,7 @@ int OfcCpAddOpenFlowHdr (__u8 *pPktHdr, __u16 pktHdrLen,
                          __u8 msgType, __u32 xid, 
                          __u8 **ppOfPkt)
 {
+    printk("in fun begin\n");
     tOfcOfHdr *pOfHdr = NULL;
     __u16     ofHdrLen = 0;
     
@@ -339,6 +340,7 @@ int OfcCpAddOpenFlowHdr (__u8 *pPktHdr, __u16 pktHdrLen,
     }
 
     *ppOfPkt = (__u8 *) pOfHdr;
+    printk("in fun end \n");
     return OFC_SUCCESS;
 }
 
@@ -1789,6 +1791,7 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
     tOfcCpMultipartHeader        *pMultipartHeader  = NULL;
     __u8                         *replyPkt          = NULL;
     __u16                        matchTlvLen        = 0;
+    __u8                         tableId            = 0;
 
 
     pFlowStatsReq = (tOfcMultipartFlowStats *)(pCntrlPkt + 
@@ -1812,7 +1815,7 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
         memset(matchFields, 0, sizeof(tOfcMatchFields));
         while(pRequestOXMTlv->length != 0)
         {
-            if (pRequestOXMTlv->Class == OFPXMC_OPENFLOW_BASIC)
+            if (ntohs(pRequestOXMTlv->Class) == OFPXMC_OPENFLOW_BASIC)
             {
                 switch(pRequestOXMTlv->field >> 1)
                 {
@@ -1821,6 +1824,7 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
                         memcpy(&(matchFields->inPort), 
                                pRequestOXMTlv->aValue, 
                                pRequestOXMTlv->length);
+                        printk("value set \n");
                         break;
                     }
                     case OFCXMT_OFB_ETH_DST:
@@ -1893,86 +1897,109 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
     pMultipartHeader->type = htons(OFPMP_FLOW);
 
     // Get the flow table using the table id received from the request.
-    pFlowTable = OfcDpGetFlowTableEntry (pFlowStatsReq->tableId);
-    if (!pFlowTable)
+    tableId = (pFlowStatsReq->tableId == OFC_ALL_TABLES ? OFC_FIRST_TABLE_INDEX : pFlowStatsReq->tableId);
+    printk("Table id %d \n", tableId);
+    while (tableId < OFC_MAX_FLOW_TABLES)
     {
-        printk (KERN_CRIT "Failed to fetch first flow table\r\n");
-        return OFC_FAILURE;
-    }
-
-    list_for_each (pList, &pFlowTable->flowEntryList)
-    {
-        pFlowEntry = (tOfcFlowEntry *) pList;
-
-        // TODO - ADD THIS BACK.
-        // Not the entry being queried for if the cookies dont match.
-        // if (pFlowStatsReq->cookie &&
-        //     ((pFlowStatsReq->cookie & pFlowStatsReq->cookieMask) !=
-        //     (pFlowEntry->cookie & pFlowEntry->cookieMask)))
-        // {
-        //     continue;
-        // }
-
-        if (pFlowStatsReq->outPort != OFPP_ANY &&
-            pFlowStatsReq->outPort != pFlowEntry->outPort)
+        pFlowTable = OfcDpGetFlowTableEntry (tableId);
+        if (!pFlowTable)
         {
-            continue;
+            printk (KERN_CRIT "Failed to fetch first flow table\r\n");
+            return OFC_FAILURE;
         }
 
-        if (!pRequestOXMTlv || 
-             memcmp(matchFields, 
-                    &(pFlowEntry->matchFields), 
-                    sizeof(tOfcMatchFields)) == 0)
+        list_for_each (pList, &pFlowTable->flowEntryList)
         {
-            // There is an existing entry in flow stats reply. Send it out and populate again.
-            if (pFlowStatsReply)
+            pFlowEntry = (tOfcFlowEntry *) pList;
+
+            // TODO - ADD THIS BACK.
+            // Not the entry being queried for if the cookies dont match.
+            // if (pFlowStatsReq->cookie &&
+            //     ((pFlowStatsReq->cookie & pFlowStatsReq->cookieMask) !=
+            //     (pFlowEntry->cookie & pFlowEntry->cookieMask)))
+            // {
+            //     continue;
+            // }
+
+            printk(" OUT PORT %d \n", pFlowEntry->outPort);
+            if (pFlowStatsReq->outPort != OFPP_ANY &&
+                pFlowStatsReq->outPort != pFlowEntry->outPort)
             {
-                pMultipartHeader->flags = OFC_REPLY_MORE;
-                if ((OfcCpAddOpenFlowHdr((__u8 *)pMultipartHeader, 
-                                         sizeof(tOfcCpMultipartHeader) + 
-                                             pFlowStatsReply->length,
-                                         OFPT_MULTIPART_REPLY,
-                                         ((tOfcOfHdr *)pCntrlPkt)->xid, 
-                                         &replyPkt) != OFC_SUCCESS) || 
-                    (OfcCpSendCntrlPktFromSock(replyPkt, 
-                                               ntohs(((tOfcOfHdr *)replyPkt)->length)) != OFC_SUCCESS))
+                continue;
+            }
+
+            printk ("Inside \n");
+            if (!pRequestOXMTlv || 
+                 memcmp(matchFields, 
+                        &(pFlowEntry->matchFields), 
+                        sizeof(tOfcMatchFields)) == 0)
+            {
+                printk("match \n");
+                // There is an existing entry in flow stats reply. Send it out and populate again.
+                if (pFlowStatsReply)
                 {
-                    // TODO - printk
-                    return OFC_FAILURE;
+                    pMultipartHeader->flags = OFC_REPLY_MORE;
+                    if ((OfcCpAddOpenFlowHdr((__u8 *)pMultipartHeader, 
+                                             sizeof(tOfcCpMultipartHeader) + 
+                                                 pFlowStatsReply->length,
+                                             OFPT_MULTIPART_REPLY,
+                                             ((tOfcOfHdr *)pCntrlPkt)->xid, 
+                                             &replyPkt) != OFC_SUCCESS) || 
+                        (OfcCpSendCntrlPktFromSock(replyPkt, 
+                                                   ntohs(((tOfcOfHdr *)replyPkt)->length)) != OFC_SUCCESS))
+                    {
+                        // TODO - printk
+                        return OFC_FAILURE;
+                    }
+                    printk("INSIDE \n");
+                    kfree(replyPkt);
+                    memset(pMultipartHeader, 0, OFC_MTU_SIZE);
+                    pMultipartHeader->type = htons(OFPMP_FLOW);
+
                 }
-                kfree(replyPkt);
-                memset(pMultipartHeader, 0, OFC_MTU_SIZE);
-                pMultipartHeader->type = htons(OFPMP_FLOW);
 
+                pFlowStatsReply = (tOfcMultiPartFlowStatsReply *) ((__u8 *)pMultipartHeader + 
+                                   sizeof(tOfcCpMultipartHeader));
+                pFlowStatsReply->byteCount = pFlowEntry->pktMatchCount;
+                pFlowStatsReply->packetCount = pFlowEntry->pktMatchCount;
+                // TODO - Add this back.
+                // pFlowStatsReply->cookie = pFlowEntry->cookie;
+                pFlowStatsReply->tableId = pFlowStatsReq->tableId;
+                pFlowStatsReply->priority = pFlowEntry->priority;
+
+                pMatchTlv = (tOfcMatchTlv *) ((__u8 *)pFlowStatsReply 
+                                   + sizeof(tOfcMultiPartFlowStatsReply));
+
+                if (!pFlowEntry)
+                {
+                    printk("Empty Flow Entry \n");
+                }
+                if (!matchFields)
+                {
+                    printk("Empty Match Fields\n");
+                }
+                matchTlvLen = OfcCpConstructMatch(&pMatchTlv, 
+                                                  pFlowEntry->matchFields, 
+                                                  matchFields->inPort);
+                pFlowStatsReply->length = matchTlvLen + 
+                                          sizeof(tOfcMultiPartFlowStatsReply);
             }
-
-            pFlowStatsReply = (tOfcMultiPartFlowStatsReply *) ((__u8 *)pMultipartHeader + 
-                               sizeof(tOfcCpMultipartHeader));
-            pFlowStatsReply->byteCount = pFlowEntry->pktMatchCount;
-            pFlowStatsReply->packetCount = pFlowEntry->pktMatchCount;
-            // TODO - Add this back.
-            // pFlowStatsReply->cookie = pFlowEntry->cookie;
-            pFlowStatsReply->tableId = pFlowStatsReq->tableId;
-            pFlowStatsReply->priority = pFlowEntry->priority;
-
-            pMatchTlv = (tOfcMatchTlv *) ((__u8 *)pFlowStatsReply 
-                               + sizeof(tOfcMultiPartFlowStatsReply));
-
-            if (!pFlowEntry)
-            {
-                printk("Empty Flow Entry \n");
-            }
-            if (!matchFields)
-            {
-                printk("Empty Match Fields\n");
-            }
-            matchTlvLen = OfcCpConstructMatch(&pMatchTlv, 
-                                              pFlowEntry->matchFields, 
-                                              matchFields->inPort);
-            pFlowStatsReply->length = matchTlvLen + 
-                                      sizeof(tOfcMultiPartFlowStatsReply);
         }
+
+        if (pFlowStatsReq->tableId != OFC_ALL_TABLES)
+        {
+            break;
+        }
+        tableId++;
     }
+
+    printk("newtest2 \n");
+    
+    if (!pMultipartHeader)
+        printk("header fail\n");
+
+    if (!pFlowStatsReply)
+        printk("flow stats fail \n");
 
     if ((OfcCpAddOpenFlowHdr((__u8 *)pMultipartHeader, 
                              sizeof(tOfcCpMultipartHeader) + 
@@ -1985,6 +2012,7 @@ int ofcCpHandleMultipartFlowStats (__u8 *pCntrlPkt)
     {
         return OFC_FAILURE;
     }
+    printk("newtest1 \n");
 
     kfree(replyPkt);
     kfree(pMultipartHeader);

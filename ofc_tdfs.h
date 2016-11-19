@@ -68,7 +68,7 @@ typedef struct _tOfcEightByte
 
 typedef struct
 {
-    __u8   inPort;
+    __u16  inPort;
     __u8   aDstMacAddr[OFC_MAC_ADDR_LEN];
     __u8   aSrcMacAddr[OFC_MAC_ADDR_LEN];
     __u16  vlanId;

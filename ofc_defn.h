@@ -39,6 +39,7 @@
 #define OFC_MAX_FLOW_ENTRIES  20
 #define OFC_MIN_FLOW_PRIORITY 0
 #define OFC_FIRST_TABLE_INDEX 0
+#define OFC_ALL_TABLES        255 
 
 #define OFC_MAC_ADDR_LEN          6
 #define OFC_IP_PROT_TYPE_OFFSET   9
