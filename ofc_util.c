@@ -169,7 +169,8 @@ tDataPktRxIfQ *OfcDpRecvFromDataPktQ (void)
 * Returns: OFC_SUCCESS/OFC_FAILURE
 *
 *******************************************************************/
-int OfcDpSendToDataPktQ (int dataIfNum)
+int OfcDpSendToDataPktQ (int dataIfNum, __u8 *pDataPkt, 
+                         __u16 dataPktLen)
 {
     tDataPktRxIfQ *pMsgQ = NULL;
 
@@ -181,7 +182,10 @@ int OfcDpSendToDataPktQ (int dataIfNum)
         return OFC_FAILURE;
     }
 
+    memset (pMsgQ, 0, sizeof (tDataPktRxIfQ));
     INIT_LIST_HEAD (&pMsgQ->list);
+    pMsgQ->pDataPkt = pDataPkt;
+    pMsgQ->dataPktLen = dataPktLen;
     pMsgQ->dataIfNum = dataIfNum;
     list_add_tail (&pMsgQ->list, &gOfcDpGlobals.pktRxIfListHead);
 
@@ -320,58 +324,7 @@ tDpCpMsgQ *OfcCpRecvFromDpMsgQ (void)
 
     return NULL;
 }
-#if 0
-/******************************************************************                                                                          
-* Function: OfcCpSendToCntrlPktQ
-*
-* Description: This function increments the number of control
-*              packets present in control packet queue of
-*              control path task socket queue
-*
-* Input: pPkt - None
-*
-* Output: None
-*
-* Returns: OFC_SUCCESS/OFC_FAILURE
-*
-*******************************************************************/
-int OfcCpSendToCntrlPktQ (void)
-{
-    down_interruptible (&gOfcCpGlobals.cntrlPktSemId);
-    gOfcCpGlobals.numCntrlPktInQ++;
-    up (&gOfcCpGlobals.cntrlPktSemId);
 
-    return OFC_SUCCESS;
-}
-
-/******************************************************************                                                                          
-* Function: OfcCpRecvFromCntrlPktQ
-*
-* Description: This function decrements the number of control
-*              packets present in control packet queue of
-*              control path task socket queue
-*
-* Input: pPkt - None
-*
-* Output: None
-*
-* Returns: Number of control packets in queue
-*
-*******************************************************************/
-__u32 OfcCpRecvFromCntrlPktQ (void)
-{
-    __u32 retVal = 0;
-
-    if (gOfcCpGlobals.numCntrlPktInQ != 0)
-    {
-        retVal = gOfcCpGlobals.numCntrlPktInQ;
-        (gOfcCpGlobals.numCntrlPktInQ)--;
-        return retVal;
-    }
-
-    return gOfcCpGlobals.numCntrlPktInQ;
-}
-#endif
 /******************************************************************                                                                          
 * Function: OfcGetNetDevByName
 *
@@ -681,6 +634,47 @@ int OfcDpCreateSocketsForDataPkts (void)
     return OFC_SUCCESS;
 }
 
+/******************************************************************
+* Function: OfcDpCreateThreadsForRxDataPkts
+*
+* Description: This function creates threads for receiving data
+*              packets on raw sockets 
+*
+* Input: None 
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDpCreateThreadsForRxDataPkts (void)
+{
+    struct task_struct *pThread = NULL;
+    char               threadName[OFC_MAX_THREAD_NAME_LEN];
+    int                dataIfNum = 0;
+    
+    for (dataIfNum = 0; dataIfNum < gNumOpenFlowIf; dataIfNum++)
+    {
+        memset (threadName, 0, sizeof (threadName));
+        sprintf (threadName, "%s%d", OFC_RX_DATA_PKT_TH_NAME, 
+                                     dataIfNum + 1);
+        pThread = kthread_run (OfcDpRxDataPktThread, 
+                               (void *) &dataIfNum, threadName);
+        if (!pThread)
+        {
+            printk (KERN_CRIT "Failed to create Rx Data Packet "
+                    "thread for dataIfNum:%d\r\n", dataIfNum);
+            return OFC_FAILURE;
+        }
+
+        gOfcDpGlobals.aDataPktRxThread[dataIfNum] = pThread;
+        pThread = NULL;
+        msleep (1000);
+    }
+
+    return OFC_SUCCESS;
+}
+
 /******************************************************************                                                                          
 * Function: OfcConvertStringToIp
 *
@@ -889,6 +883,9 @@ int OfcDpSendDataPktOnSock (__u8 dataIfNum, __u8 *pPkt,
                           "socket!!\r\n");
         return OFC_FAILURE;
     }
+
+    printk (KERN_INFO "[%s]: Packet Tx from data socket " 
+            "(dataIfNum:%d)\r\n", __func__, dataIfNum);
 
     return OFC_SUCCESS;
 }

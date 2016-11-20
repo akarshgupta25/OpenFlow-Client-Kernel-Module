@@ -28,21 +28,24 @@ typedef struct
 typedef struct
 {
     struct list_head list;
+    __u8             *pDataPkt;
+    __u16            dataPktLen;
     int              dataIfNum;
 } tDataPktRxIfQ;
 
 typedef struct
 {
-    struct socket    *aDataSocket[OFC_MAX_OF_IF_NUM];
-    struct semaphore semId;
-    struct semaphore dataPktQSemId;
-    struct semaphore cpMsgQSemId;
-    struct list_head pktRxIfListHead; /* Queue for interfaces on which
+    struct socket      *aDataSocket[OFC_MAX_OF_IF_NUM];
+    struct task_struct *aDataPktRxThread[OFC_MAX_OF_IF_NUM];
+    struct semaphore   semId;
+    struct semaphore   dataPktQSemId;
+    struct semaphore   cpMsgQSemId;
+    struct list_head   pktRxIfListHead; /* Queue for interfaces on which
                                        * data packet is received */
-    struct list_head cpMsgListHead;   /* Queue for messages from
+    struct list_head   cpMsgListHead;   /* Queue for messages from
                                        * control path sub module */
-    struct list_head flowTableListHead;
-    int              events;
+    struct list_head   flowTableListHead;
+    int                events;
 } tOfcDpGlobals;
 
 /* Control path structures */
@@ -185,8 +188,10 @@ int OfcDeleteList (struct list_head *pListHead);
 
 int OfcDpMainTask (void *args);
 int OfcDpCreateSocketsForDataPkts (void);
+int OfcDpCreateThreadsForRxDataPkts (void);
 int OfcDpRxDataPacket (void);
-int OfcDpSendToDataPktQ (int dataIfNum);
+int OfcDpSendToDataPktQ (int dataIfNum, __u8 *pDataPkt, 
+                         __u16 dataPktLen);
 tDataPktRxIfQ *OfcDpRecvFromDataPktQ (void);
 tDpCpMsgQ *OfcDpRecvFromCpMsgQ (void);
 int OfcDpSendToCpQ (tDpCpMsgQ *pMsgParam);
@@ -196,6 +201,7 @@ __u32 OfcDpRcvDataPktFromSock (__u8 dataIfNum, __u8 **ppPkt,
 int OfcDpSendDataPktOnSock (__u8 dataIfNum, __u8 *pPkt,
                             __u32 pktLen);
 tOfcFlowTable *OfcDpGetFlowTableEntry (__u8 tableId);
+int OfcDpRxDataPktThread (void *args);
 int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen,
                                      __u8 inPort);
 int OfcDpExecuteFlowInstr (__u8 *pPkt, __u32 pktLen, __u8 inPort,

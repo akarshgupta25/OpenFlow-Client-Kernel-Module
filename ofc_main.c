@@ -48,12 +48,8 @@ unsigned int OfcNetFilterPreRouteHook (const struct nf_hook_ops *ops,
     {
         if (!strcmp (in->name, gpOpenFlowIf[dataIfNum]))
         {
-            /* Packet rx on OpenFlow interface, notify data path
-             * task */
-            down_interruptible (&gOfcDpGlobals.dataPktQSemId);
-            OfcDpSendToDataPktQ (dataIfNum);
-            up (&gOfcDpGlobals.dataPktQSemId);
-            OfcDpSendEvent (OFC_PKT_RX_EVENT);
+            /* Packet rx on OpenFlow interface, notify kernel 
+             * that the packet need not be processed */
             return NF_STOLEN;
         }
     }
@@ -148,6 +144,7 @@ static int __init OpenFlowClientStart (void)
 static void __exit OpenFlowClientStop (void)
 {
     /* TODO: Release all data sockets */
+    /* TODO: Stop all data pkt rx threads */
     kthread_stop (gOfcGlobals.pOfcDpThread);
     sock_release (gOfcCpGlobals.pCntrlSocket);
     kthread_stop (gOfcGlobals.pOfcCpThread);

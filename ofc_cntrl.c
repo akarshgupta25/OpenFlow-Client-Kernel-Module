@@ -148,12 +148,17 @@ int OfcCpRxControlPacket (void)
         /* Validate OpenFlow version */
         if (pOfHdr->version != OFC_VERSION)
         {
-            printk (KERN_CRIT "OpenFlow version mismatch!!\r\n");
-            /* TODO: Send error message and handle for higher versions */
-            bytesProcessed += cntrlPktLen;
-            pCntrlPkt += cntrlPktLen;
-            retVal = OFC_FAILURE;
-            continue;
+            /* OpenFlow version mismatch allowed only in
+             * Hello message */
+            if (pOfHdr->type != OFPT_HELLO)
+            {
+                printk (KERN_CRIT "OpenFlow version mismatch!!\r\n");
+                /* TODO: Send error message and handle for higher versions */
+                bytesProcessed += cntrlPktLen;
+                pCntrlPkt += cntrlPktLen;
+                retVal = OFC_FAILURE;
+                continue;
+            }
         }
 
         /* Validate packet type */

@@ -56,6 +56,14 @@ int OfcDpMainInit (void)
         return OFC_FAILURE;
     }
 
+    /* Create threads for receiving data packets from raw sockets
+     * and posting them to data path task */
+    if (OfcDpCreateThreadsForRxDataPkts() != OFC_SUCCESS)
+    {
+        printk (KERN_CRIT "Data packet thread failed!!\r\n");
+        return OFC_FAILURE;
+    }
+
     return OFC_SUCCESS;
 }
 
@@ -131,12 +139,18 @@ int OfcDpRxDataPacket (void)
     while ((pMsgQ = OfcDpRecvFromDataPktQ()) != NULL)
     {
         dataIfNum = pMsgQ->dataIfNum;
-        if (OfcDpRcvDataPktFromSock (dataIfNum, &pDataPkt, &pktLen)
-            != OFC_SUCCESS)
+        pDataPkt = pMsgQ->pDataPkt;
+        pktLen = pMsgQ->dataPktLen;
+
+        if (pDataPkt == NULL)
         {
+            printk (KERN_CRIT "NULL packet received by data path"
+                              " task\r\n");
+            kfree (pMsgQ);
+            pMsgQ = NULL;
             continue;
         }
-
+ 
         /* Process packet using OpenFlow Pipeline */
         OfcDpProcessPktOpenFlowPipeline (pDataPkt, pktLen, dataIfNum);
 
@@ -153,10 +167,10 @@ int OfcDpRxDataPacket (void)
 }
 
 /******************************************************************                                                                          
-* Function: OfcDpRxDataPacket
+* Function: OfcDpRxControlPathMsg
 *
-* Description: This function receives data packet from OpenFlow
-*              interfaces via raw socket
+* Description: This function receives messages sent by control
+*              path task
 *
 * Input: None
 *
@@ -188,6 +202,7 @@ int OfcDpRxControlPathMsg (void)
                 }
 
                 OfcDpInsertFlowEntry (pFlowEntry);
+                OfcDumpFlows(0);
                 break;
 
             case OFC_FLOW_MOD_DEL:
@@ -202,6 +217,7 @@ int OfcDpRxControlPathMsg (void)
                 }
 
                 OfcDpDeleteFlowEntry (pFlowEntry);
+                OfcDumpFlows(0);
                 break;
 
             case OFC_PACKET_OUT:
@@ -219,9 +235,56 @@ int OfcDpRxControlPathMsg (void)
         kfree (pMsgQ);
         pMsgQ = NULL;
     }
-    OfcDumpFlows(0);
 
     up (&gOfcDpGlobals.cpMsgQSemId);
+
+    return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcDpRxDataPktThread
+*
+* Description: This function receives data packets from raw
+*              sockets and posts event to data path task.
+*
+* Input: args - Pointer to OpenFlow interface number
+*
+* Output: None
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcDpRxDataPktThread (void *args)
+{
+    __u8    *pDataPkt = NULL;
+    __u32   pktLen = 0;
+    int     dataIfNum = 0;
+
+    dataIfNum = *((int *) args);
+    while (1)
+    {
+        printk (KERN_INFO "[%s]: dataIfNum:%d, Waiting for packet\r\n",
+                 __func__, dataIfNum);
+
+        if (OfcDpRcvDataPktFromSock (dataIfNum, &pDataPkt, &pktLen)
+            != OFC_SUCCESS)
+        {
+            pDataPkt = NULL;
+            pktLen = 0;
+            continue;
+        }
+
+        printk (KERN_INFO "[%s]: dataIfNum:%d, Data Packet Rx\r\n", 
+                __func__, dataIfNum);
+
+        down_interruptible (&gOfcDpGlobals.dataPktQSemId);
+        OfcDpSendToDataPktQ (dataIfNum, pDataPkt, pktLen);
+        up (&gOfcDpGlobals.dataPktQSemId);
+        OfcDpSendEvent (OFC_PKT_RX_EVENT);
+
+        pDataPkt = NULL;
+        pktLen = 0;
+    }
 
     return OFC_SUCCESS;
 }
@@ -432,9 +495,7 @@ int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen,
             memset (pDataPkt, 0, pktLen);
             memcpy (pDataPkt, pPkt, pktLen);
             memset (&msgQ, 0, sizeof(msgQ));
-#if 0
-            msgQ.pPkt = pPkt;
-#endif
+
             msgQ.pPkt = pDataPkt;
             msgQ.pktLen = pktLen;
             /* Port n in switch corresponds to port n+1 for controller */
@@ -903,6 +964,9 @@ int OfcDpExecPktOutActions (__u8 *pPkt, __u16 pktLen,
     __u8    portIndex = 0;
     __u8    dataIfNum = 0;
 
+    printk (KERN_INFO "[%s]: Rx packet-out from control plane " 
+                      "task\r\n", __func__);
+
     if ((pPkt == NULL) || (pActionsListHead == NULL))
     {
         printk (KERN_CRIT "[%s]: Invalid inputs\r\n", __func__);
@@ -926,6 +990,8 @@ int OfcDpExecPktOutActions (__u8 *pPkt, __u16 pktLen,
     for (portIndex = 0; portIndex < numOutPorts; portIndex++)
     {
         outPort = aOutPortList[portIndex];
+        printk (KERN_INFO "[%s]: outPort:0x%x\r\n", 
+                __func__, outPort);
         if ((outPort == OFPP_CONTROLLER) || 
             (outPort == OFPP_NORMAL) || 
             (outPort == OFPP_LOCAL) ||

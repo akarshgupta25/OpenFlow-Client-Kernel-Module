@@ -18,15 +18,17 @@
 #define OFC_FALSE   0
 #define OFC_TRUE    1
 
-#define OFC_DP_TASK_NAME       "OpenFlowDataPath"
-#define OFC_CP_TASK_NAME       "OpenFlowControlPath"
-#define OFC_MAX_OF_IF_NUM      10
-#define OFC_MAX_IFNAME_LEN     16
-#define OFC_MAX_DATA_SOCK      10
-#define OFC_MTU_SIZE           1500
-#define OFC_L2_HDR_LEN         18
-#define OFC_MAX_PKT_SIZE       (OFC_MTU_SIZE + OFC_L2_HDR_LEN) /* Check if CRC is required */
-#define OFC_DEF_CNTRL_PORT_NUM 6633
+#define OFC_DP_TASK_NAME        "OpenFlowDataPath"
+#define OFC_CP_TASK_NAME        "OpenFlowControlPath"
+#define OFC_MAX_OF_IF_NUM       10
+#define OFC_MAX_IFNAME_LEN      16
+#define OFC_MAX_THREAD_NAME_LEN 35
+#define OFC_RX_DATA_PKT_TH_NAME "OpenFlowRxDataPktThread"
+#define OFC_MAX_DATA_SOCK       10
+#define OFC_MTU_SIZE            1500
+#define OFC_L2_HDR_LEN          18
+#define OFC_MAX_PKT_SIZE        (OFC_MTU_SIZE + OFC_L2_HDR_LEN) /* Check if CRC is required */
+#define OFC_DEF_CNTRL_PORT_NUM  6633
 
 /* NOTE: If events are added or removed, update OFC_MAX_EVENTS */
 #define OFC_PKT_RX_EVENT   0x00001
