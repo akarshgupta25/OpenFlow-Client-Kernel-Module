@@ -123,8 +123,6 @@ int OfcCpRxControlPacket (void)
     __u16      bytesProcessed = 0;
     int        retVal = OFC_SUCCESS;
 
-    printk (KERN_INFO "Before socket receive\r\n"); 
-
     if (OfcCpRecvCntrlPktOnSock (&pPkt, &pktLen) 
         != OFC_SUCCESS)
     {
@@ -143,7 +141,8 @@ int OfcCpRxControlPacket (void)
     {
         pOfHdr = (tOfcOfHdr *) ((void *) pCntrlPkt);
         cntrlPktLen = ntohs (pOfHdr->length);
-        printk (KERN_INFO "Processing a packet (bytesProcessed:%d, cntrlPktLen:%d)\r\n", bytesProcessed, cntrlPktLen);
+        printk (KERN_INFO "Processing control packet (bytesProcessed:%d,"
+                " cntrlPktLen:%d)\r\n", bytesProcessed, cntrlPktLen);
 
         /* Validate OpenFlow version */
         if (pOfHdr->version != OFC_VERSION)
@@ -264,7 +263,7 @@ void OfcCpRxDataPathMsg (void)
                                 &pOpenFlowPkt);
         if (pOpenFlowPkt == NULL)
         {
-            printk (KERN_INFO "Failed to construct Packet-in "
+            printk (KERN_CRIT "Failed to construct Packet-in "
                               "message\r\n");
             if (pMsgQ->pPkt != NULL)
             {
@@ -279,8 +278,7 @@ void OfcCpRxDataPathMsg (void)
         pktLen = ntohs (((tOfcOfHdr *) pOpenFlowPkt)->length);
         OfcCpSendCntrlPktFromSock (pOpenFlowPkt, pktLen);
 
-        printk (KERN_INFO "OpenFlow Packet:\r\n");
-        OfcDumpPacket (pOpenFlowPkt, pktLen);
+        printk (KERN_INFO "Sent Packet-In to controller\r\n");
 
         /* Release message */
         kfree (pOpenFlowPkt);
@@ -364,6 +362,8 @@ int OfcCpSendHelloPacket (__u32 xid)
 {
     __u8  *pHelloPkt = NULL;
 
+    printk (KERN_INFO "Hello message Rx\r\n");
+
     if (OfcCpAddOpenFlowHdr (NULL, 0, OFPT_HELLO, xid, &pHelloPkt) 
         != OFC_SUCCESS)
     {
@@ -379,6 +379,8 @@ int OfcCpSendHelloPacket (__u32 xid)
         pHelloPkt = NULL;
         return OFC_FAILURE;
     }
+
+    printk (KERN_INFO "Hello message Tx\r\n");
 
     kfree (pHelloPkt);
     pHelloPkt = NULL;
@@ -406,6 +408,8 @@ int OfcCpSendEchoReply (__u8 *pCntrlPkt, __u16 cntrlPktLen)
     __u32  xid = 0;
     __u16  dataLen = 0;
 
+    printk (KERN_INFO "Echo Request Rx\r\n");
+
     dataLen = ntohs (((tOfcOfHdr *) pCntrlPkt)->length) - 
               OFC_OPENFLOW_HDR_LEN;
     if (dataLen != 0)
@@ -432,6 +436,8 @@ int OfcCpSendEchoReply (__u8 *pCntrlPkt, __u16 cntrlPktLen)
         return OFC_FAILURE;
     }
 
+    printk (KERN_INFO "Echo Reply Tx\r\n");
+
     kfree (pBarrierReply);
     pBarrierReply = NULL;
     return OFC_SUCCESS;
@@ -456,6 +462,8 @@ int OfcCpSendFeatureReply (__u8 *pCntrlPkt)
     struct net_device *dev = NULL;
     __u8              *pOpenFlowPkt = NULL;
     __u16             featReplyLen = 0;
+
+    printk (KERN_INFO "Feature Request Rx\r\n");
 
     pResponseMsg = (tOfcFeatReply *) kmalloc (sizeof(tOfcFeatReply),
                                               GFP_KERNEL);
@@ -516,6 +524,8 @@ int OfcCpSendFeatureReply (__u8 *pCntrlPkt)
         return OFC_FAILURE;
     }
 
+    printk (KERN_INFO "Feature Reply Tx\r\n");
+
     kfree(pResponseMsg);
     pResponseMsg = NULL;
     kfree(pOpenFlowPkt);
@@ -560,6 +570,8 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
         return OFC_FAILURE;
     }
 
+    printk (KERN_INFO "Constructing Packet-In\r\n");
+
     /* Construct match field TLV  */
     pMatchTlv = (tOfcMatchTlv *) kmalloc (OFC_MTU_SIZE, GFP_KERNEL);
     if (pMatchTlv == NULL)
@@ -578,7 +590,6 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
                                             sizeof(pMatchTlv->length));
     oxmTlvLen = sizeof(pOxmTlv->Class) + sizeof(pOxmTlv->field) +
                 sizeof(pOxmTlv->length);
-    printk (KERN_INFO "oxmTlvLen: %u\r\n", oxmTlvLen);
 
     /* TODO: Not supporting field mask option */
     /* Add OXM match field TLVs */
@@ -737,9 +748,6 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
         matchTlvLen = (matchTlvLen + 8) - (matchTlvLen % 8);
     }
 
-    printk (KERN_INFO "Match TLV:\r\n");
-    OfcDumpPacket ((__u8 *) pMatchTlv, matchTlvLen);
-
     /* Construct packet-in message */
     pktInLen = sizeof (((tOfcPktInHdr *) 0)->bufId) +
                sizeof (((tOfcPktInHdr *) 0)->totLength) +
@@ -748,9 +756,6 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
                sizeof (((tOfcPktInHdr *) 0)->cookie);
 
     pktInHdrLen = pktInLen + matchTlvLen + pktLen;
-    printk (KERN_INFO "matchTlvLen: %u\r\n", matchTlvLen);
-    printk (KERN_INFO "pktInLen: %u\r\n", pktInLen);
-    printk (KERN_INFO "pktLen: %u\r\n", pktLen);
 
 #if 0
     /* Add padding if required */
@@ -762,7 +767,6 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
     /* Add packet-in padding bytes */
     padBytes += 2;
     pktInHdrLen += padBytes;
-    printk (KERN_INFO "pktInHdrLen: %u\r\n", pktInHdrLen);
 
     pPktInHdr = (tOfcPktInHdr *) kmalloc (pktInHdrLen, GFP_KERNEL);
     if (pPktInHdr == NULL)
@@ -784,9 +788,6 @@ int OfcCpConstructPacketIn (__u8 *pPkt, __u32 pktLen, __u8 inPort,
     memcpy (((__u8 *) pPktInHdr) + pktInLen, pMatchTlv, matchTlvLen);
     memcpy (((__u8 *) pPktInHdr) + pktInLen + matchTlvLen + padBytes, 
             pPkt, pktLen);
-
-    printk (KERN_INFO "Packet-In:\r\n");
-    OfcDumpPacket ((__u8 *) pPktInHdr, pktInHdrLen);
 
     /* Add standard OpenFlow header */
     OfcCpAddOpenFlowHdr ((__u8 *) pPktInHdr, pktInHdrLen,
@@ -826,6 +827,8 @@ int OfcCpProcessPktOut (__u8 *pPkt, __u16 pktLen)
     __u8             *pPktParser = NULL;
     __u8             *pDataPkt = NULL;
  
+    printk (KERN_INFO "Packet-Out message Rx\r\n");
+
     pActionListHead = (struct list_head *) kmalloc 
                        (sizeof(struct list_head), GFP_KERNEL);
     if (pActionListHead == NULL)
@@ -889,12 +892,6 @@ int OfcCpProcessPktOut (__u8 *pPkt, __u16 pktLen)
     }
 
     /* Extract data packet */
-#if 0
-    pActionTlv = (tOfcActionTlv *) (void *) (((__u8 *) pPktOut) +
-                                           sizeof (tOfcPktOutHdr));
-    pPktParser = (__u8 *) (void *) (((__u8 *) pActionTlv + 
-                                    ntohs (pPktOut->actionsLen)));
-#endif
     pPktParser = (__u8 *) (void *) pActionTlv;
     dataPktLen = ntohs (((tOfcOfHdr *) pPkt)->length) - 
                  OFC_OPENFLOW_HDR_LEN - sizeof (tOfcPktOutHdr) - 
@@ -916,9 +913,6 @@ int OfcCpProcessPktOut (__u8 *pPkt, __u16 pktLen)
     /* Send message to data path task */
     memset (&msgQ, 0, sizeof (msgQ));
     msgQ.msgType = OFC_PACKET_OUT;
-#if 0
-    msgQ.pPkt = pPktParser;
-#endif
     msgQ.pPkt = pDataPkt;
     msgQ.pktLen = dataPktLen;
     msgQ.pActionListHead = pActionListHead;
@@ -950,12 +944,11 @@ int OfcCpProcessFlowMod (__u8 *pPkt, __u16 pktLen)
     tDpCpMsgQ       msgQ;
     __u16           flowModLen = 0;
  
+    printk (KERN_INFO "Flow Mod Message Rx\r\n");
+
     pFlowMod =
         (tOfcFlowModHdr *) (void *) (pPkt + OFC_OPENFLOW_HDR_LEN);
     flowModLen = pktLen - OFC_OPENFLOW_HDR_LEN;
-
-    printk (KERN_INFO "pktLen:%d, flowModLen:%d\r\n", pktLen, flowModLen);
-    OfcDumpPacket ((__u8 *) pFlowMod, flowModLen);
 
     switch (pFlowMod->command)
     {
@@ -1093,12 +1086,9 @@ int OfcCpAddMatchFieldsInFlow (tOfcFlowModHdr *pFlowMod,
     }
 
     matchTlvLen = ntohs (pMatchTlv->length);
-    printk (KERN_INFO "matchTlvLen(before): %d\r\n", matchTlvLen);
-    OfcDumpPacket ((__u8 *) pMatchTlv, matchTlvLen);
     /* Discern length of match Oxm TLV */
     matchTlvLen = matchTlvLen - (sizeof (pMatchTlv->type) + 
                                  sizeof (pMatchTlv->length));
-    printk (KERN_INFO "matchTlvLen(after): %d\r\n", matchTlvLen);
 
     pOfcMatchOxmTlv = (tOfcMatchOxmTlv *) (void *) 
                       (((__u8 *) pMatchTlv) + sizeof (pMatchTlv->type) +
@@ -1110,7 +1100,6 @@ int OfcCpAddMatchFieldsInFlow (tOfcFlowModHdr *pFlowMod,
     /* Add each Oxm match to flow entry match list */
     while (matchTlvLen > 0)
     {
-        printk (KERN_INFO "Parsing match list\r\n");
         if (ntohs (pOfcMatchOxmTlv->Class) != OFPXMC_OPENFLOW_BASIC)
         {
             matchTlvLen = matchTlvLen - (oxmTlvLen +  
@@ -1289,17 +1278,13 @@ int OfcCpAddInstrListInFlow (tOfcFlowModHdr *pFlowMod,
     {
         matchTlvLen = (matchTlvLen + 8) - (matchTlvLen % 8);
     }
-    printk (KERN_INFO "[%s]: matchTlvLen: %d\r\n", __func__, matchTlvLen);
 
     pInstrTlv = (tOfcInstrTlv *) (void *) (((__u8 *) pMatchTlv) +
                                             matchTlvLen);
     instrTlvLen = flowModLen - (OFC_MATCH_TLV_OFFSET + matchTlvLen);
-    printk (KERN_INFO "[%s]: instrTlvLen: %d\r\n", __func__, instrTlvLen);
-    OfcDumpPacket ((__u8 *) pInstrTlv, instrTlvLen);
 
     while (instrTlvLen > 0)
     {
-        printk (KERN_INFO "Parsing Instruction List\r\n");
         pInstrList = (tOfcInstrList *) kmalloc (sizeof(tOfcInstrList),
                                                 GFP_KERNEL);
         if (pInstrList == NULL)
@@ -1375,7 +1360,7 @@ int OfcCpAddInstrListInFlow (tOfcFlowModHdr *pFlowMod,
 }
 
 /******************************************************************                                                                          
-* Function: OfcCpAddInstrListInFlow
+* Function: OfcCpAddActionListToInstr
 *
 * Description: This function adds list of actions in flow
 *              entry instruction list
@@ -1395,12 +1380,8 @@ int OfcCpAddActionListToInstr (tOfcActionTlv *pActionTlv,
     tOfcActionList  *pActionList = NULL;
     __u8            *pPktParser = NULL;
     
-    printk (KERN_INFO "[%s]: actionTlvLen:%d\r\n", __func__, actionTlvLen);
-    OfcDumpPacket ((__u8 *) pActionTlv, actionTlvLen);
-
     while (actionTlvLen > 0)
     {
-        printk (KERN_INFO "[%s]: Parsing Action List\r\n", __func__);
         pActionList = (tOfcActionList *) kmalloc (sizeof(tOfcActionList),
                                                   GFP_KERNEL);
         if (pActionList == NULL)
@@ -1427,7 +1408,6 @@ int OfcCpAddActionListToInstr (tOfcActionTlv *pActionTlv,
                         sizeof (pActionList->u.outPort));
                 pActionList->u.outPort =
                     ntohl (pActionList->u.outPort);
-                printk (KERN_INFO "[%s]: pActionList->u.outPort: 0x%x\r\n", __func__, pActionList->u.outPort);
 
                 list_add_tail (&pActionList->list,
                                &pInstrList->u.actionList);
@@ -1467,9 +1447,10 @@ int OfcCpProcessMultipartReq (__u8 *pCntrlPkt, __u16 cntrlPktLen)
 {
     tOfcMultipartHeader *pMultReq = NULL;
 
+    printk (KERN_INFO "Multipart Request Rx\r\n");
+
     pMultReq = (tOfcMultipartHeader *)(pCntrlPkt + 
                                        OFC_OPENFLOW_HDR_LEN);
-
     switch (ntohs (pMultReq->type))
     {
         case OFPMP_DESC:
@@ -1552,6 +1533,8 @@ int OfcCpHandleMultipartSwitchDesc (__u8 *pCntrlPkt,
     __u8                 *pOpenFlowPkt = NULL;
     __u16                descLen = 0;
 
+    printk (KERN_INFO "Multipart Switch Desc Rx\r\n");
+
     descLen = sizeof (tOfcMultipartHeader) + 
               sizeof (tOfcMultipartSwDesc);
     pMultipartHeader = (tOfcMultipartHeader *) kmalloc (descLen,
@@ -1601,6 +1584,8 @@ int OfcCpHandleMultipartSwitchDesc (__u8 *pCntrlPkt,
         return OFC_FAILURE;
     }
 
+    printk (KERN_INFO "Multipart Switch Desc Tx\r\n");
+
     kfree (pMultipartHeader);
     pMultipartHeader = NULL;
     kfree (pOpenFlowPkt);
@@ -1632,11 +1617,13 @@ int OfcCpHandleMultipartPortDesc (__u8 *pCntrlPkt, __u16 cntrlPktLen)
     __u32                  pktLength             = 0;
     int                    dataIfNum             = 0;
 
+    printk (KERN_INFO "Multipart Port Desc Rx\r\n");
+
     pMultipartHeader = (tOfcMultipartHeader *) kmalloc (OFC_MTU_SIZE, 
                                                         GFP_KERNEL);
     if (pMultipartHeader == NULL)
     {
-        printk(KERN_INFO "Failed to allocate memory for multipart"
+        printk(KERN_CRIT "Failed to allocate memory for multipart"
                " port desc message\r\n");
         return OFC_FAILURE;
     }
@@ -1712,6 +1699,8 @@ int OfcCpHandleMultipartPortDesc (__u8 *pCntrlPkt, __u16 cntrlPktLen)
         return OFC_FAILURE;
     }
 
+    printk (KERN_INFO "Multipart Port Desc Tx\r\n");
+
     kfree (pMultipartHeader);
     pMultipartHeader = NULL;
     kfree (pOpenFlowPkt);
@@ -1736,6 +1725,8 @@ int OfcCpSendBarrierReply (__u32 xid)
 {
     __u8  *pBarrierReply = NULL;
 
+    printk (KERN_INFO "Barrier Request Rx\r\n");
+
     if (OfcCpAddOpenFlowHdr (NULL, 0, OFPT_BARRIER_REPLY, xid, 
                              &pBarrierReply)
         != OFC_SUCCESS)
@@ -1753,8 +1744,9 @@ int OfcCpSendBarrierReply (__u32 xid)
         return OFC_FAILURE;
     }
 
+    printk (KERN_INFO "Barrier Reply Tx\r\n");
+
     kfree (pBarrierReply);
     pBarrierReply = NULL;
     return OFC_SUCCESS;
 }
-

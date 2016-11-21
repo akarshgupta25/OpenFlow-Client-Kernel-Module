@@ -261,10 +261,10 @@ int OfcDpRxDataPktThread (void *args)
     int     dataIfNum = 0;
 
     dataIfNum = *((int *) args);
+    printk (KERN_INFO "dataIfNum:%d, spawned\r\n", dataIfNum);
+
     while (1)
     {
-        printk (KERN_INFO "[%s]: dataIfNum:%d, Waiting for packet\r\n",
-                 __func__, dataIfNum);
 
         if (OfcDpRcvDataPktFromSock (dataIfNum, &pDataPkt, &pktLen)
             != OFC_SUCCESS)
@@ -274,8 +274,8 @@ int OfcDpRxDataPktThread (void *args)
             continue;
         }
 
-        printk (KERN_INFO "[%s]: dataIfNum:%d, Data Packet Rx\r\n", 
-                __func__, dataIfNum);
+        printk (KERN_INFO "dataIfNum:%d, Data Packet Rx\r\n", 
+                dataIfNum);
 
         down_interruptible (&gOfcDpGlobals.dataPktQSemId);
         OfcDpSendToDataPktQ (dataIfNum, pDataPkt, pktLen);
@@ -422,6 +422,8 @@ int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen,
     __u8            tableId = 0;
     __u8            isTableMiss = OFC_FALSE;
     __u8            dataIfNum = 0;
+
+    printk (KERN_INFO "Processing data packet...\r\n");
 
     memset (aOutPortList, 0, sizeof(aOutPortList));
     memset (&pktMatchFields, 0, sizeof(pktMatchFields));
@@ -860,8 +862,7 @@ int OfcDpInsertFlowEntry (tOfcFlowEntry *pFlowEntry)
             continue;
         }
 
-        printk (KERN_INFO "[%s]: Inserting entry in flow table\r\n",
-                           __func__);
+        printk (KERN_INFO "Inserting entry in flow table\r\n");
         /* Insert new flow before this flow entry */
         INIT_LIST_HEAD (&pFlowEntry->list);
         list_add_tail (&pFlowEntry->list, &pFlowEntryParser->list);
@@ -912,6 +913,7 @@ int OfcDpDeleteFlowEntry (tOfcFlowEntry *pFlowEntry)
             continue;
         }
 
+        printk (KERN_INFO "Deleting entry from flow table\r\n");
         /* Flow entry found, delete it */
         list_del_init (pList);
         list_for_each (pList2, 
@@ -964,8 +966,8 @@ int OfcDpExecPktOutActions (__u8 *pPkt, __u16 pktLen,
     __u8    portIndex = 0;
     __u8    dataIfNum = 0;
 
-    printk (KERN_INFO "[%s]: Rx packet-out from control plane " 
-                      "task\r\n", __func__);
+    printk (KERN_INFO "Packet-Out Rx from control path " 
+                      "task\r\n");
 
     if ((pPkt == NULL) || (pActionsListHead == NULL))
     {
@@ -990,8 +992,7 @@ int OfcDpExecPktOutActions (__u8 *pPkt, __u16 pktLen,
     for (portIndex = 0; portIndex < numOutPorts; portIndex++)
     {
         outPort = aOutPortList[portIndex];
-        printk (KERN_INFO "[%s]: outPort:0x%x\r\n", 
-                __func__, outPort);
+        printk (KERN_INFO "outPort:0x%x\r\n", outPort);
         if ((outPort == OFPP_CONTROLLER) || 
             (outPort == OFPP_NORMAL) || 
             (outPort == OFPP_LOCAL) ||

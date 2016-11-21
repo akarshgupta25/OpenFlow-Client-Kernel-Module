@@ -347,7 +347,6 @@ struct net_device *OfcGetNetDevByName (char *pIfName)
     {
         if (!strcmp (pTempDev->name, pIfName))
         {
-            printk (KERN_INFO "Device found\r\n");
             return pTempDev;
         }
         pTempDev = next_net_device (pTempDev);
@@ -382,7 +381,6 @@ struct net_device *OfcGetNetDevByIp (unsigned int ipAddr)
             if ((ifa->ifa_mask & ifa->ifa_address) == 
                 (ifa->ifa_mask & htonl(ipAddr)))
             {
-                printk(KERN_INFO "Device Found with the Ip Specified\r\n");
                 return pTempDev;
             }
         }
@@ -609,7 +607,7 @@ int OfcDpCreateSocketsForDataPkts (void)
         dev = OfcGetNetDevByName (gpOpenFlowIf[dataIfNum]);
         if (dev == NULL)
         {
-            printk (KERN_INFO "Device not found!!\r\n");
+            printk (KERN_CRIT "Device not found!!\r\n");
             return OFC_FAILURE;
         }
         printk (KERN_INFO "dev->ifindex:%d\r\n", dev->ifindex);
@@ -669,7 +667,7 @@ int OfcDpCreateThreadsForRxDataPkts (void)
 
         gOfcDpGlobals.aDataPktRxThread[dataIfNum] = pThread;
         pThread = NULL;
-        msleep (1000);
+        msleep (OFC_TASK_SPAWN_GAP);
     }
 
     return OFC_SUCCESS;
@@ -884,8 +882,8 @@ int OfcDpSendDataPktOnSock (__u8 dataIfNum, __u8 *pPkt,
         return OFC_FAILURE;
     }
 
-    printk (KERN_INFO "[%s]: Packet Tx from data socket " 
-            "(dataIfNum:%d)\r\n", __func__, dataIfNum);
+    printk (KERN_INFO "Packet Tx from data socket " 
+            "(dataIfNum:%d)\r\n", dataIfNum);
 
     return OFC_SUCCESS;
 }

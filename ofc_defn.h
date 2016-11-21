@@ -29,6 +29,7 @@
 #define OFC_L2_HDR_LEN          18
 #define OFC_MAX_PKT_SIZE        (OFC_MTU_SIZE + OFC_L2_HDR_LEN) /* Check if CRC is required */
 #define OFC_DEF_CNTRL_PORT_NUM  6633
+#define OFC_TASK_SPAWN_GAP      1000 /* 1 second */
 
 /* NOTE: If events are added or removed, update OFC_MAX_EVENTS */
 #define OFC_PKT_RX_EVENT   0x00001

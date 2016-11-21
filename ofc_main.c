@@ -117,16 +117,6 @@ static int __init OpenFlowClientStart (void)
         return OFC_FAILURE;
     }
 
-    /* Spawn OpenFlow control path task */
-    gOfcGlobals.pOfcCpThread = kthread_run (OfcCpMainTask, NULL,
-                                            OFC_CP_TASK_NAME);
-    if (!gOfcGlobals.pOfcCpThread)
-    {
-        printk (KERN_CRIT "Error creating OpenFlow control" 
-                          " path task!!\r\n");
-        return OFC_FAILURE;
-    }
-
     /* Spawn OpenFlow data path task */
     gOfcGlobals.pOfcDpThread = kthread_run (OfcDpMainTask, NULL, 
                                             OFC_DP_TASK_NAME);
@@ -136,6 +126,19 @@ static int __init OpenFlowClientStart (void)
                           "path task!!\r\n");
         kthread_stop (gOfcGlobals.pOfcCpThread);
 	    return OFC_FAILURE;
+    }
+
+    /* Wait for data path task to be spawned */
+    msleep ((gNumOpenFlowIf - 1) * OFC_TASK_SPAWN_GAP);
+
+    /* Spawn OpenFlow control path task */
+    gOfcGlobals.pOfcCpThread = kthread_run (OfcCpMainTask, NULL,
+                                            OFC_CP_TASK_NAME);
+    if (!gOfcGlobals.pOfcCpThread)
+    {
+        printk (KERN_CRIT "Error creating OpenFlow control" 
+                          " path task!!\r\n");
+        return OFC_FAILURE;
     }
 
     return OFC_SUCCESS;
