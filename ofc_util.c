@@ -542,6 +542,12 @@ void OfcDumpFlows (__u8 tableId)
             printk (KERN_INFO "l4HeaderType:%d\r\n",
                     pFlowEntry->matchFields.l4HeaderType);
         }
+        if (pFlowEntry->matchFields.arpFlds.targetIpAddr 
+            != 0)
+        {
+            printk (KERN_INFO "arpFlds.targetIpAddr:%u\r\n",
+                    pFlowEntry->matchFields.arpFlds.targetIpAddr);
+        }
 
         printk (KERN_INFO "Instruction List:\r\n");
         list_for_each (pList2, &pFlowEntry->instrList)
@@ -1069,6 +1075,19 @@ int OfcDpExtractPktHdrs (__u8 *pPkt, __u32 pktLen, __u8 inPort,
             sizeof (pPktMatchFields->etherType));
     pPktMatchFields->etherType = ntohs (pPktMatchFields->etherType);
     pktOffset += sizeof (pPktMatchFields->etherType);
+
+    if (pPktMatchFields->etherType == OFC_ARP_ETHTYPE)
+    {
+        /* Extract ARP specific fields */
+        /* Extract target IP address */
+        memcpy (&pPktMatchFields->arpFlds.targetIpAddr,
+                pPkt + pktOffset + OFC_ARP_TRGT_IP_ADDR_OFFSET, 
+                sizeof (__u32));
+        pPktMatchFields->arpFlds.targetIpAddr =
+            ntohl (pPktMatchFields->arpFlds.targetIpAddr);
+
+        return OFC_SUCCESS;
+    }
 
     if (pPktMatchFields->etherType != OFC_IP_ETHTYPE)
     {

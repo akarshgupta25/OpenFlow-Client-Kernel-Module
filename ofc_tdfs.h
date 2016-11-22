@@ -71,17 +71,23 @@ typedef struct _tOfcEightByte
 
 typedef struct
 {
-    __u8   inPort;
-    __u8   aDstMacAddr[OFC_MAC_ADDR_LEN];
-    __u8   aSrcMacAddr[OFC_MAC_ADDR_LEN];
-    __u16  vlanId;
-    __u16  etherType;
-    __u8   protocolType;
-    __u32  srcIpAddr;
-    __u32  dstIpAddr;
-    __u16  srcPortNum;
-    __u16  dstPortNum;
-    __u8   l4HeaderType;
+    __u32  targetIpAddr;
+} tArpMtchFlds;
+
+typedef struct
+{
+    __u8          inPort;
+    __u8          aDstMacAddr[OFC_MAC_ADDR_LEN];
+    __u8          aSrcMacAddr[OFC_MAC_ADDR_LEN];
+    __u16         vlanId;
+    __u16         etherType;
+    __u8          protocolType;
+    __u32         srcIpAddr;
+    __u32         dstIpAddr;
+    __u16         srcPortNum;
+    __u16         dstPortNum;
+    __u8          l4HeaderType;
+    tArpMtchFlds  arpFlds;
 } tOfcMatchFields;
 
 typedef struct

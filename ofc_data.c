@@ -482,6 +482,18 @@ int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen,
     for (portIndex = 0; portIndex < numOutPorts; portIndex++)
     {
         outPort = aOutPortList[portIndex];
+
+        /* TODO: Support OFPP_NORMAL || OFPP_LOCAL?? */
+        /* TODO: Support OFPP_FLOOD */
+        if ((outPort == OFPP_NORMAL) || 
+            (outPort == OFPP_LOCAL) ||
+            (outPort == OFPP_FLOOD))
+        {
+            printk (KERN_INFO "[%s]: OutPort:0x%x not supported\r\n",
+                    __func__, outPort);
+            continue;
+        }
+
         if (outPort == OFPP_CONTROLLER)
         {
             /* Send packet-in to controller */
@@ -538,10 +550,6 @@ int OfcDpProcessPktOpenFlowPipeline (__u8 *pPkt, __u32 pktLen,
         {
             OfcDpSendDataPktOnSock (inPort, pPkt, pktLen);
         }
-
-        /* TODO: Support OFPP_NORMAL || OFPP_LOCAL?? */
-        /* TODO: Support OFPP_FLOOD */
-
         else
         {
             /* Output port n corresponds to dataIfNum n-1 */
@@ -684,6 +692,16 @@ tOfcFlowEntry *OfcDpGetBestMatchFlow (tOfcMatchFields pktMatchFields,
             /* Match L4 destination port number */
             if (pFlowEntry->matchFields.dstPortNum !=
                 pktMatchFields.dstPortNum)
+            {
+                continue;
+            }
+        }
+
+        if (pFlowEntry->matchFields.arpFlds.targetIpAddr != 0)
+        {
+            /* Match ARP target IP address */
+            if (pFlowEntry->matchFields.arpFlds.targetIpAddr !=
+                pktMatchFields.arpFlds.targetIpAddr)
             {
                 continue;
             }

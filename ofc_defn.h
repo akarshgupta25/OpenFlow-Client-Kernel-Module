@@ -43,13 +43,15 @@
 #define OFC_MIN_FLOW_PRIORITY 0
 #define OFC_FIRST_TABLE_INDEX 0
 
-#define OFC_MAC_ADDR_LEN          6
-#define OFC_IP_PROT_TYPE_OFFSET   9
-#define OFC_IP_SRC_IP_OFFSET      12
-#define OFC_IP_DST_IP_OFFSET      16
-#define OFC_MATCH_TLV_OFFSET      40
-#define OFC_HEADER_OFFSET_FROM_IP 52
+#define OFC_MAC_ADDR_LEN             6
+#define OFC_IP_PROT_TYPE_OFFSET      9
+#define OFC_IP_SRC_IP_OFFSET         12
+#define OFC_IP_DST_IP_OFFSET         16
+#define OFC_MATCH_TLV_OFFSET         40
+#define OFC_HEADER_OFFSET_FROM_IP    52
+#define OFC_ARP_TRGT_IP_ADDR_OFFSET  24
 
+#define OFC_ARP_ETHTYPE    0x0806
 #define OFC_IP_ETHTYPE     0x0800
 #define OFC_TCP_PROT_TYPE  0x06
 #define OFC_UDP_PROT_TYPE  0x11
