@@ -1,0 +1,25 @@
+#Run the following commands with sudo.
+
+
+#apt-get install aptitude
+#aptitude install dh-autoreconf libssl-dev openssl
+
+#Untar the tar & move into the folder
+
+apt-get install dh-autoreconf
+tar -xzf openvswitch-ovs-v1.1.0pre2-7891-g95bad47.tar.gz
+cd openvswitch-ovs-95bad47
+./boot.sh
+./configure --with-linux=/lib/modules/`uname -r`/build
+make -j && sudo make install
+sudo make modules_install
+sudo modprobe gre
+sudo modprobe openvswitch
+sudo modprobe libcrc32c
+ovsdb-tool create /usr/local/etc/openvswitch/conf.db /usr/local/share/openvswitch/vswitch.ovsschema
+ovsdb-server --remote=punix:/usr/local/var/run/openvswitch/db.sock \
+--remote=db:Open_vSwitch,Open_vSwitch,manager_options \
+--pidfile --detach --log-file
+ovs-vsctl --no-wait init
+ovs-vswitchd --pidfile --detach --log-file
+

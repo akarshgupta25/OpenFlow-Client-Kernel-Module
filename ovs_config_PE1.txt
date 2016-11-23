@@ -1,0 +1,11 @@
+ovs-vsctl add-br PE1
+
+ovs-vsctl add-port PE1 eth1
+ovs-vsctl add-port PE1 eth2
+
+ifconfig PE1 30.0.0.1 netmask 255.0.0.0
+ifconfig eth1 0 up
+ifconfig eth2 0 up
+
+ovs-vsctl set-controller PE1 tcp:30.0.0.3:6633
+

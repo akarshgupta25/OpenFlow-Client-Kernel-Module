@@ -1,0 +1,21 @@
+sudo apt-get update
+sudo apt-get install python-pip -y
+sudo apt-get install git -y
+git clone git://github.com/osrg/ryu.git 
+sudo apt-get install python-eventlet python-routes python-webob python-paramiko -y
+pip install ryu
+pip install debtcollector
+
+wget https://pypi.python.org/packages/be/51/45cebdb4a95124a6e7fa704f9c8d2deaa5f0a2d067e294742b8c8d21e351/oslo.i18n-3.10.0.tar.gz#md5=45fe0f0c65f5bbfdbb3a01a695b76ceb
+tar -xvf oslo.i18n-3.10.0.tar.gz
+cd oslo.i18n-3.10.0
+python setup.py install
+
+pip install babel
+pip install rfc3986
+
+cd ..
+git clone https://github.com/mbr/tinyrpc
+cd tinyrpc
+python setup.py install
+
