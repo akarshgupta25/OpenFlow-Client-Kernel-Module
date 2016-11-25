@@ -1061,7 +1061,7 @@ int OfcDpExtractPktHdrs (__u8 *pPkt, __u32 pktLen, __u8 inPort,
     pktOffset += OFC_MAC_ADDR_LEN;
 
     /* Extract Vlan Id (if present) */
-    vlanTpid = htons (0x8100);
+    vlanTpid = htons (OFC_VLAN_TPID);
     if (!memcmp ((pPkt + pktOffset), &vlanTpid, sizeof(vlanTpid)))
     {
         pktOffset += sizeof(vlanTpid);
@@ -1102,7 +1102,9 @@ int OfcDpExtractPktHdrs (__u8 *pPkt, __u32 pktLen, __u8 inPort,
     memcpy (&pPktMatchFields->protocolType, 
             pPkt + pktOffset + OFC_IP_PROT_TYPE_OFFSET,
             sizeof (pPktMatchFields->protocolType));
+#if 0
     pPktMatchFields->protocolType = ntohs (pPktMatchFields->protocolType);
+#endif
     
     /* Extract source IP address */
     memcpy (&pPktMatchFields->srcIpAddr,
@@ -1168,4 +1170,115 @@ int OfcDeleteList (struct list_head *pListHead)
     }
 
     return OFC_SUCCESS;
+}
+
+/******************************************************************                                                                          
+* Function: OfcCalcHdrOffset
+*
+* Description: This function calculates header field offset
+*              from the packet.
+*
+* Input: pPkt - Pointer to packet
+*        pktLen - Length of packet
+*        hdrField - Header field for packet offset
+*
+* Output: pPktOffset - Pointer to packet header offset
+*
+* Returns: OFC_SUCCESS/OFC_FAILURE
+*
+*******************************************************************/
+int OfcCalcHdrOffset (__u8 *pPkt, __u16 pktLen, __u8 hdrField, 
+                      __u16 *pPktOffset)
+{
+    __u16   parsedLen = 0;
+    __u16   etherType = 0;
+    __u8    ipHdrLen = 0;
+    __u8    ipProtType = 0;
+    
+    /* Destination MAC address offset */
+    if (hdrField == OFCXMT_OFB_ETH_DST)
+    {
+        *pPktOffset = 0;
+        return OFC_SUCCESS;
+    }
+    parsedLen += OFC_MAC_ADDR_LEN;
+
+    /* Source MAC address offset */
+    if (hdrField == OFCXMT_OFB_ETH_SRC)
+    {
+        *pPktOffset = parsedLen;
+        return OFC_SUCCESS;
+    }
+    parsedLen += OFC_MAC_ADDR_LEN;
+
+    memcpy (&etherType, pPkt + parsedLen, sizeof (etherType));
+    etherType = ntohs (etherType);
+    parsedLen += sizeof (etherType);
+
+    if (hdrField == OFCXMT_OFB_VLAN_VID)
+    {
+        /* VLAN tag not present in packet */
+        if (etherType != OFC_VLAN_TPID)
+        {
+            return OFC_FAILURE;
+        }
+
+        *pPktOffset = parsedLen;
+        return OFC_SUCCESS;
+    }
+
+    if (etherType == OFC_VLAN_TPID)
+    {
+        parsedLen += sizeof (etherType);
+        memcpy (&etherType, pPkt + parsedLen, sizeof (etherType));
+        etherType = ntohs (etherType);
+        parsedLen += sizeof (etherType);
+    }
+
+    /* Check for various EtherTypes */
+
+    /* All non-IP fields must have been checked before this
+     * Now check only IP and higher layer related fields */
+    if (etherType != OFC_IP_ETHTYPE)
+    {
+        return OFC_FAILURE;
+    }
+
+    if ((hdrField == OFCXMT_OFB_IPV4_SRC) ||
+        (hdrField == OFCXMT_OFB_IPV4_DST))
+    {
+        *pPktOffset = parsedLen;
+        return OFC_SUCCESS;
+    }
+
+    /* Fetch IP header length */
+    memcpy (&ipHdrLen, pPkt + parsedLen, sizeof (ipHdrLen));
+    ipHdrLen = (ipHdrLen & 0xF) * 4;
+
+    /* Fetch protocol type */
+    memcpy (&ipProtType,
+            pPkt + parsedLen + OFC_IP_PROT_TYPE_OFFSET,
+            sizeof (ipProtType));
+
+    parsedLen += ipHdrLen;
+    /* Check for various L3 protocols */
+
+    /* All non-layer 4 protocols must have been checked
+     * before this */
+    if ((hdrField == OFCXMT_OFB_TCP_SRC) ||
+        (hdrField == OFCXMT_OFB_TCP_DST) ||
+        (hdrField == OFCXMT_OFB_UDP_SRC) ||
+        (hdrField == OFCXMT_OFB_UDP_DST))
+    {
+        if ((ipProtType != OFC_TCP_PROT_TYPE) &&
+            (ipProtType != OFC_UDP_PROT_TYPE))
+        {
+            return OFC_FAILURE;
+        }
+
+        *pPktOffset = parsedLen;
+        return OFC_SUCCESS;
+    }
+
+    return OFC_FAILURE;
 }

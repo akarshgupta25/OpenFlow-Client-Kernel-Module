@@ -1403,6 +1403,7 @@ int OfcCpAddActionListToInstr (tOfcActionTlv *pActionTlv,
         memset (pActionList, 0, sizeof (tOfcActionList));
         pActionList->actionType = ntohs (pActionTlv->type);
         INIT_LIST_HEAD (&pActionList->list);
+        INIT_LIST_HEAD (&pActionList->u.setFieldList);
 
         switch (pActionList->actionType)
         {
@@ -1419,6 +1420,21 @@ int OfcCpAddActionListToInstr (tOfcActionTlv *pActionTlv,
                 list_add_tail (&pActionList->list,
                                &pInstrList->u.actionList);
                 break;
+
+#if 0
+            case OFCAT_SET_FIELD:
+                if (OfcCpAddSetFieldListToAction (pActionTlv, 
+                    ntohs (pActionTlv->length),
+                    &pActionList->u.setFieldList) != OFC_SUCCESS)
+                {
+                    OfcDeleteList (&pInstrList->u.actionList);
+                    return OFC_FAILURE;
+                }
+
+                list_add_tail (&pActionList->list,
+                               &pInstrList->u.actionList);
+                break;
+#endif
 
             default:
                 /* TODO: Support other actions? */

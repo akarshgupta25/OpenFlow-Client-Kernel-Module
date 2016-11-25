@@ -19,20 +19,18 @@ do
         out=`ifconfig -a | grep $inter -A 1 | grep "inet addr" | awk '{print $2}' | grep -o "[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*"`
         if [ "$out" == "" ]; then
             if [ "$interfaces" != "" ]; then
-                interfaces="$interfaces,\"$inter\""
+                interfaces=$interfaces,"$inter"
             else
-                interfaces="\"$inter\""
+                interfaces="$inter"
             fi
             ifconfig $inter up
-        else
         fi
     fi
 done
 
-# echo "Interfaces are $interfaces test"
-# echo "controller IP is $cntrlInt test"
+int=`echo $interfaces`
 if [ "$2" == "" ];then
-    sudo insmod ./openflowclient.ko gpOpenFlowIf=$interfaces gpServerIpAddr=$cntrlInt 
+    sudo insmod ./openflowclient.ko gpOpenFlowIf=$int gpServerIpAddr=$cntrlInt
 else
     sudo insmod ./openflowclient.ko gpOpenFlowIf=$interfaces gpServerIpAddr=$cntrlInt gCntrlPortNo=$2
 fi

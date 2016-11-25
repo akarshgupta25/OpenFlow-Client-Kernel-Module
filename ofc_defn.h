@@ -53,6 +53,7 @@
 
 #define OFC_ARP_ETHTYPE    0x0806
 #define OFC_IP_ETHTYPE     0x0800
+#define OFC_VLAN_TPID      0x8100
 #define OFC_TCP_PROT_TYPE  0x06
 #define OFC_UDP_PROT_TYPE  0x11
 

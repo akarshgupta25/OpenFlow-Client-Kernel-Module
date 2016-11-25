@@ -2,4 +2,4 @@
 
 apt-get update
 apt-get install make
-apt-get install gcc
+apt-get install gcc -y

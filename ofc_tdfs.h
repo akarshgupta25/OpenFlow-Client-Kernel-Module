@@ -164,10 +164,19 @@ typedef struct
     __u16            actionType;
     union
     {
-        __u32  outPort;
+        __u32            outPort;
+        struct list_head setFieldList;
     } u;
 
 } tOfcActionList;
+
+typedef struct 
+{
+    struct list_head list;
+    __u16            type;
+    __u8             aPad[2];
+    __u8             aValue[16];
+} tOfcSetFields;
 
 typedef struct
 {
@@ -191,6 +200,8 @@ struct net_device *OfcGetNetDevByName (char *pIfName);
 struct net_device *OfcGetNetDevByIp (unsigned int ipAddr);
 int OfcConvertStringToIp (char *pString, unsigned int *pIpAddr);
 int OfcDeleteList (struct list_head *pListHead);
+int OfcCalcHdrOffset (__u8 *pPkt, __u16 pktLen, __u8 hdrField,
+                      __u16 *pPktOffset);
 
 int OfcDpMainTask (void *args);
 int OfcDpCreateSocketsForDataPkts (void);
