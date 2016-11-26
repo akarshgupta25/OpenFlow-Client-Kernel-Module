@@ -715,6 +715,8 @@ int OfcDumpFlowFields (tOfcFlowEntry *pFlowEntry)
             }
         }
     }
+
+    return OFC_SUCCESS;
 }
 
 /******************************************************************
