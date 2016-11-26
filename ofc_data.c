@@ -934,23 +934,83 @@ int OfcDpDeleteFlowEntry (tOfcFlowEntry *pFlowEntry)
         return OFC_FAILURE;
     }
 
+#if 0
     printk (KERN_INFO "Dumping pFlowEntry:\r\n");
     OfcDumpFlowFields (pFlowEntry);
     printk (KERN_INFO "\r\n");
+#endif
     list_for_each (pList, &pFlowTable->flowEntryList)
     {
         pFlowEntryParser = (tOfcFlowEntry *) pList;
 
+#if 0
         printk (KERN_INFO "Dumping pFlowEntryParser:\r\n");
         OfcDumpFlowFields (pFlowEntryParser);
         printk (KERN_INFO "\r\n");
-        if (memcmp (pFlowEntry, pFlowEntryParser, 
-                    sizeof (tOfcFlowEntry)))
+#endif
+
+        if (pFlowEntryParser->hardTimeout != 
+            pFlowEntry->hardTimeout)
+        {
+            continue;
+        }
+        if (pFlowEntryParser->idleTimeout !=
+            pFlowEntry->idleTimeout)
         {
             continue;
         }
 
+        if (memcmp (&pFlowEntryParser->cookie, &pFlowEntry->cookie,
+                    sizeof (pFlowEntry->cookie)))
+        {
+            continue;
+        }
+        if (memcmp (&pFlowEntryParser->cookieMask,
+                    &pFlowEntry->cookieMask,
+                    sizeof (pFlowEntry->cookieMask)))
+        {
+            continue;
+        }
+
+        if (pFlowEntryParser->flags != pFlowEntry->flags)
+        {
+            continue;
+        }
+
+        if (pFlowEntryParser->priority != pFlowEntry->priority)
+        {
+            continue;
+        }
+
+        if (pFlowEntryParser->bufId != pFlowEntry->bufId)
+        {
+            continue;
+        }
+        if (pFlowEntryParser->outPort != pFlowEntry->outPort)
+        {
+            continue;
+        }
+        if (pFlowEntryParser->outGrp != pFlowEntry->outGrp)
+        {
+            continue;
+        }
+
+        if (pFlowEntryParser->tableId != pFlowEntry->tableId)
+        {
+            continue;
+        }
+
+        if (memcmp (&pFlowEntryParser->matchFields,
+                    &pFlowEntry->matchFields,
+                    sizeof (pFlowEntry->matchFields)))
+        {
+            continue;
+        }
+
+        /* TODO: Match instruction list for deletion as well */
+
         printk (KERN_INFO "Deleting entry from flow table\r\n");
+
         /* Flow entry found, delete it */
         list_del_init (pList);
         list_for_each (pList2, 
@@ -963,17 +1023,6 @@ int OfcDpDeleteFlowEntry (tOfcFlowEntry *pFlowEntry)
         OfcDeleteList (&pFlowEntryParser->matchList);
         kfree (pFlowEntryParser);
         pFlowEntryParser = NULL;
-#if 0
-        list_for_each (pList2, &pFlowEntry->instrList)
-        {
-            pInstrList = (tOfcInstrList *) pList2;
-            OfcDeleteList (&pInstrList->u.actionList);
-        }
-        OfcDeleteList (&pFlowEntry->instrList);
-        OfcDeleteList (&pFlowEntry->matchList);
-        kfree (pFlowEntry);
-        pFlowEntry = NULL;
-#endif
         break;
     }
 
