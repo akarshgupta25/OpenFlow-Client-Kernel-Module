@@ -196,6 +196,7 @@ int OfcDpReceiveEvent (int events, int *pRxEvents);
 int OfcDpSendEvent (int events);
 void OfcDumpPacket (char *au1Packet, int len);
 void OfcDumpFlows (__u8 tableId);
+int OfcDumpFlowFields (tOfcFlowEntry *pFlowEntry);
 struct net_device *OfcGetNetDevByName (char *pIfName);
 struct net_device *OfcGetNetDevByIp (unsigned int ipAddr);
 int OfcConvertStringToIp (char *pString, unsigned int *pIpAddr);

@@ -581,6 +581,134 @@ void OfcDumpFlows (__u8 tableId)
     return;
 }
 
+int OfcDumpFlowFields (tOfcFlowEntry *pFlowEntry)
+{
+    if (pFlowEntry == NULL)
+    {
+        printk (KERN_CRIT "[%s]: pFlowEntry NULL\r\n", __func__);
+        return OFC_FAILURE;
+    }
+
+    printk (KERN_INFO "cookie.hi:0x%x, cookie.lo:0x%x\r\n", 
+            pFlowEntry->cookie.hi, pFlowEntry->cookie.lo);
+    printk (KERN_INFO "tableId:%d\r\n", pFlowEntry->tableId);
+    printk (KERN_INFO "idleTimeout:%d, hardTimeout:%d\r\n",
+            pFlowEntry->idleTimeout, pFlowEntry->hardTimeout);
+    printk (KERN_INFO "priority:%d\r\n", pFlowEntry->priority);
+    printk (KERN_INFO "bufId:0x%x\r\n", pFlowEntry->bufId);
+    printk (KERN_INFO "outPort:0x%x, outGrp:0x%x, flags:%d\r\n", 
+            pFlowEntry->outPort, pFlowEntry->outGrp, 
+            pFlowEntry->flags);
+
+    printk (KERN_INFO "MatchList:\r\n");
+    list_for_each (pList2, &pFlowEntry->matchList)
+    {
+        pMatchList = (tMatchListEntry *) pList2;
+        printk (KERN_INFO "field:%d, length:%d\r\n",
+                pMatchList->field, pMatchList->length);
+        for (index = 0; index < pMatchList->length;
+             index++)
+        {
+            printk (KERN_INFO "value[%d]:0x%x\r\n",  
+                    index, pMatchList->aValue[index]);
+        }
+    }
+
+    printk (KERN_INFO "Match Fields:\r\n");
+    if (memcmp (pFlowEntry->matchFields.aDstMacAddr,
+                aNullMacAddr, OFC_MAC_ADDR_LEN))
+    {
+        for (index = 0; index < OFC_MAC_ADDR_LEN; index++)
+        {
+            printk (KERN_INFO "dst[%d]:0x%x\r\n", index,
+                    pFlowEntry->matchFields.aDstMacAddr[index]);
+        }
+    }
+    if (memcmp (pFlowEntry->matchFields.aSrcMacAddr,
+                aNullMacAddr, OFC_MAC_ADDR_LEN))
+    {
+        for (index = 0; index < OFC_MAC_ADDR_LEN; index++)
+        {
+            printk (KERN_INFO "src[%d]:0x%x\r\n", index,
+                    pFlowEntry->matchFields.aSrcMacAddr[index]);
+        }
+    }
+    if (pFlowEntry->matchFields.vlanId != 0)
+    {
+        printk (KERN_INFO "vlanId:%d\r\n",
+                pFlowEntry->matchFields.vlanId);
+    }
+    if (pFlowEntry->matchFields.etherType != 0)
+    {
+        printk (KERN_INFO "etherType:0x%x\r\n",
+                pFlowEntry->matchFields.etherType);
+    }
+    if (pFlowEntry->matchFields.srcIpAddr != 0)
+    {
+        printk (KERN_INFO "srcIpAddr:%u\r\n",
+                pFlowEntry->matchFields.srcIpAddr);
+    }
+    if (pFlowEntry->matchFields.dstIpAddr != 0)
+    {
+        printk (KERN_INFO "dstIpAddr:%u\r\n",
+                pFlowEntry->matchFields.dstIpAddr);
+    }
+    if (pFlowEntry->matchFields.protocolType != 0)
+    {
+        printk (KERN_INFO "protocolType:0x%x\r\n",
+                pFlowEntry->matchFields.protocolType);
+    }
+    if (pFlowEntry->matchFields.srcPortNum != 0)
+    {
+        printk (KERN_INFO "srcPortNum:%d\r\n",
+                pFlowEntry->matchFields.srcPortNum);
+    }
+    if (pFlowEntry->matchFields.dstPortNum != 0)
+    {
+        printk (KERN_INFO "dstPortNum:%d\r\n",
+                pFlowEntry->matchFields.dstPortNum);
+    }
+    if (pFlowEntry->matchFields.l4HeaderType != 0)
+    {
+        printk (KERN_INFO "l4HeaderType:%d\r\n",
+                pFlowEntry->matchFields.l4HeaderType);
+    }
+    if (pFlowEntry->matchFields.arpFlds.targetIpAddr 
+        != 0)
+    {
+        printk (KERN_INFO "arpFlds.targetIpAddr:%u\r\n",
+                pFlowEntry->matchFields.arpFlds.targetIpAddr);
+    }
+
+    printk (KERN_INFO "Instruction List:\r\n");
+    list_for_each (pList2, &pFlowEntry->instrList)
+    {
+        pInstrList = (tOfcInstrList *) pList2;
+        printk (KERN_INFO "type:%d\r\n", pInstrList->instrType);
+        if (pInstrList->instrType == OFCIT_GOTO_TABLE)
+        {
+            printk (KERN_INFO "GotoTableId:%d\r\n", 
+                    pInstrList->u.tableId);
+        }
+        if ((pInstrList->instrType == OFCIT_WRITE_ACTIONS) ||
+            (pInstrList->instrType == OFCIT_APPLY_ACTIONS))
+        {
+            printk (KERN_INFO "Action List:\r\n");
+            list_for_each (pList3, &pInstrList->u.actionList)
+            {
+                pActionList = (tOfcActionList *) pList3;
+                printk (KERN_INFO "type:%d\r\n",
+                        pActionList->actionType);
+                if (pActionList->actionType == OFCAT_OUTPUT)
+                {
+                    printk (KERN_INFO "outputPort:0x%x\r\n",
+                            pActionList->u.outPort);
+                }
+            }
+        }
+    }
+}
+
 /******************************************************************
 * Function: OfcDpCreateSocketsForDataPkts
 *

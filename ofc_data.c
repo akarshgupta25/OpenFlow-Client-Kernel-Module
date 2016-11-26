@@ -922,15 +922,28 @@ int OfcDpDeleteFlowEntry (tOfcFlowEntry *pFlowEntry)
     if (pFlowTable == NULL)
     {
         printk (KERN_CRIT "Invalid flow table Id in flow entry\r\n");
+        list_for_each (pList2, &pFlowEntry->instrList)
+        {
+            pInstrList = (tOfcInstrList *) pList2;
+            OfcDeleteList (&pInstrList->u.actionList);
+        }  
+        OfcDeleteList (&pFlowEntry->instrList);
+        OfcDeleteList (&pFlowEntry->matchList);
         kfree (pFlowEntry);
         pFlowEntry = NULL;
         return OFC_FAILURE;
     }
 
+    printk (KERN_INFO "Dumping pFlowEntry:\r\n");
+    OfcDumpFlowFields (pFlowEntry);
+    printk (KERN_INFO "\r\n");
     list_for_each (pList, &pFlowTable->flowEntryList)
     {
         pFlowEntryParser = (tOfcFlowEntry *) pList;
 
+        printk (KERN_INFO "Dumping pFlowEntryParser:\r\n");
+        OfcDumpFlowFields (pFlowEntryParser);
+        printk (KERN_INFO "\r\n");
         if (memcmp (pFlowEntry, pFlowEntryParser, 
                     sizeof (tOfcFlowEntry)))
         {
@@ -950,6 +963,7 @@ int OfcDpDeleteFlowEntry (tOfcFlowEntry *pFlowEntry)
         OfcDeleteList (&pFlowEntryParser->matchList);
         kfree (pFlowEntryParser);
         pFlowEntryParser = NULL;
+#if 0
         list_for_each (pList2, &pFlowEntry->instrList)
         {
             pInstrList = (tOfcInstrList *) pList2;
@@ -959,8 +973,19 @@ int OfcDpDeleteFlowEntry (tOfcFlowEntry *pFlowEntry)
         OfcDeleteList (&pFlowEntry->matchList);
         kfree (pFlowEntry);
         pFlowEntry = NULL;
+#endif
         break;
     }
+
+    list_for_each (pList2, &pFlowEntry->instrList)
+    {
+        pInstrList = (tOfcInstrList *) pList2;
+        OfcDeleteList (&pInstrList->u.actionList);
+    }   
+    OfcDeleteList (&pFlowEntry->instrList);
+    OfcDeleteList (&pFlowEntry->matchList);
+    kfree (pFlowEntry);
+    pFlowEntry = NULL;
 
     return OFC_SUCCESS;
 }
