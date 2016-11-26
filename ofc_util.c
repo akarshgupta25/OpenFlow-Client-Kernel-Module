@@ -583,6 +583,14 @@ void OfcDumpFlows (__u8 tableId)
 
 int OfcDumpFlowFields (tOfcFlowEntry *pFlowEntry)
 {
+    struct list_head *pList2 = NULL;
+    struct list_head *pList3 = NULL;
+    tMatchListEntry  *pMatchList = NULL;
+    tOfcInstrList    *pInstrList = NULL;
+    tOfcActionList   *pActionList = NULL;
+    __u8             aNullMacAddr[OFC_MAC_ADDR_LEN];
+    __u8             index = 0;
+
     if (pFlowEntry == NULL)
     {
         printk (KERN_CRIT "[%s]: pFlowEntry NULL\r\n", __func__);
