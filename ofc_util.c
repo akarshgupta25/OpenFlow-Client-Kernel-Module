@@ -1117,7 +1117,7 @@ int OfcDpExtractPktHdrs (__u8 *pPkt, __u32 pktLen, __u8 inPort,
             pPkt + pktOffset + OFC_IP_DST_IP_OFFSET,
             sizeof (pPktMatchFields->dstIpAddr));
     pPktMatchFields->dstIpAddr = ntohl (pPktMatchFields->dstIpAddr);
-    pktLen += ipHdrLen;
+    pktOffset += ipHdrLen;
 
     if ((pPktMatchFields->protocolType != OFC_TCP_PROT_TYPE) &&
         (pPktMatchFields->protocolType != OFC_UDP_PROT_TYPE))
