@@ -542,6 +542,12 @@ void OfcDumpFlows (__u8 tableId)
             printk (KERN_INFO "l4HeaderType:%d\r\n",
                     pFlowEntry->matchFields.l4HeaderType);
         }
+        if (pFlowEntry->matchFields.arpFlds.sourceIpAddr 
+            != 0)
+        {
+            printk (KERN_INFO "arpFlds.sourceIpAddr:%u\r\n",
+                    pFlowEntry->matchFields.arpFlds.sourceIpAddr);
+        }
         if (pFlowEntry->matchFields.arpFlds.targetIpAddr 
             != 0)
         {
@@ -680,6 +686,12 @@ int OfcDumpFlowFields (tOfcFlowEntry *pFlowEntry)
     {
         printk (KERN_INFO "l4HeaderType:%d\r\n",
                 pFlowEntry->matchFields.l4HeaderType);
+    }
+    if (pFlowEntry->matchFields.arpFlds.sourceIpAddr 
+        != 0)
+    {
+        printk (KERN_INFO "arpFlds.sourceIpAddr:%u\r\n",
+                pFlowEntry->matchFields.arpFlds.sourceIpAddr);
     }
     if (pFlowEntry->matchFields.arpFlds.targetIpAddr 
         != 0)
@@ -1217,6 +1229,13 @@ int OfcDpExtractPktHdrs (__u8 *pPkt, __u32 pktLen, __u8 inPort,
     if (pPktMatchFields->etherType == OFC_ARP_ETHTYPE)
     {
         /* Extract ARP specific fields */
+        /* Extract source IP address */
+        memcpy (&pPktMatchFields->arpFlds.sourceIpAddr,
+                pPkt + pktOffset + OFC_ARP_SRC_IP_ADDR_OFFSET, 
+                sizeof (__u32));
+        pPktMatchFields->arpFlds.sourceIpAddr =
+            ntohl (pPktMatchFields->arpFlds.sourceIpAddr);
+
         /* Extract target IP address */
         memcpy (&pPktMatchFields->arpFlds.targetIpAddr,
                 pPkt + pktOffset + OFC_ARP_TRGT_IP_ADDR_OFFSET, 

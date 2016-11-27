@@ -697,6 +697,16 @@ tOfcFlowEntry *OfcDpGetBestMatchFlow (tOfcMatchFields pktMatchFields,
             }
         }
 
+        if (pFlowEntry->matchFields.arpFlds.sourceIpAddr != 0)
+        {
+            /* Match ARP source IP address */
+            if (pFlowEntry->matchFields.arpFlds.sourceIpAddr !=
+                pktMatchFields.arpFlds.sourceIpAddr)
+            {
+                continue;
+            }
+        }
+
         if (pFlowEntry->matchFields.arpFlds.targetIpAddr != 0)
         {
             /* Match ARP target IP address */
@@ -717,14 +727,6 @@ tOfcFlowEntry *OfcDpGetBestMatchFlow (tOfcMatchFields pktMatchFields,
             }
         }
 
-#if 0
-        /* Flow matched!! Determine whether this is best match */
-        if ((pBestMatchFlow == NULL) ||
-            (pFlowEntry->priority > pBestMatchFlow->priority))
-        {
-            pBestMatchFlow = pFlowEntry;
-        }
-#endif
         /* Flow matched!! This is the highest priority matched 
          * flow!! */
         pBestMatchFlow = pFlowEntry;

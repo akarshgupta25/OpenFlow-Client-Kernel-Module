@@ -1227,6 +1227,13 @@ int OfcCpAddMatchFieldsInFlow (tOfcFlowModHdr *pFlowMod,
                 pFlowEntry->matchFields.l4HeaderType = OFC_UDP_PROT_TYPE;
                 break;
 
+            case OFCXMT_OFB_ARP_SPA:
+                memcpy (&pFlowEntry->matchFields.arpFlds.sourceIpAddr,
+                        pMatchList->aValue, pMatchList->length);
+                pFlowEntry->matchFields.arpFlds.sourceIpAddr =
+                    ntohl (pFlowEntry->matchFields.arpFlds.sourceIpAddr);
+                break;
+
             case OFCXMT_OFB_ARP_TPA:
                 memcpy (&pFlowEntry->matchFields.arpFlds.targetIpAddr,
                         pMatchList->aValue, pMatchList->length);

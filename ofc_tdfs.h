@@ -71,6 +71,7 @@ typedef struct _tOfcEightByte
 
 typedef struct
 {
+    __u32  sourceIpAddr;
     __u32  targetIpAddr;
 } tArpMtchFlds;
 
